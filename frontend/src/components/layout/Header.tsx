@@ -9,7 +9,7 @@ const Header: React.FC = () => {
     shortlisted: candidates.filter(c => c.status === 'shortlisted').length,
     onHold: candidates.filter(c => c.status === 'hold').length,
     avgScore: candidates.length > 0 
-      ? Math.round(candidates.reduce((sum, c) => sum + c.score.overall, 0) / candidates.length)
+      ? Math.round(candidates.reduce((sum, c) => sum + (c.score?.overall || 0), 0) / candidates.length)
       : 0
   };
 

@@ -3,7 +3,7 @@ import CandidateCard from './CandidateCard';
 import { useApp } from '../../contexts/AppContext';
 
 const CandidateList: React.FC = () => {
-  const { candidates, setCandidates } = useApp();
+  const { candidates } = useApp();
   const [filter, setFilter] = useState('all');
   const [sortBy, setSortBy] = useState('score');
 
@@ -13,8 +13,8 @@ const CandidateList: React.FC = () => {
   });
 
   const sortedCandidates = [...filteredCandidates].sort((a, b) => {
-    if (sortBy === 'score') return b.score.overall - a.score.overall;
-    if (sortBy === 'name') return a.personalInfo.name.localeCompare(b.personalInfo.name);
+    if (sortBy === 'score') return (b.score?.overall || 0) - (a.score?.overall || 0);
+    if (sortBy === 'name') return (a.personalInfo?.name || '').localeCompare(b.personalInfo?.name || '');
     return 0;
   });
 

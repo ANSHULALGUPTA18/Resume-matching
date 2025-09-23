@@ -1,23 +1,25 @@
-import api from './api';
+import axios from 'axios';
+
+const API_BASE_URL = 'http://localhost:5000/api';
 
 export interface Candidate {
   _id: string;
   jobId: string;
-  personalInfo: {
+  personalInfo?: {
     name: string;
     email: string;
     phone: string;
     location: string;
   };
-  skills: string[];
-  score: {
+  skills?: string[];
+  score?: {
     overall: number;
-    skillMatch: number;
-    experienceMatch: number;
-    educationMatch: number;
-    keywordMatch: number;
+    skillMatch?: number;
+    experienceMatch?: number;
+    educationMatch?: number;
+    keywordMatch?: number;
   };
-  improvements: string[];
+  improvements?: string[];
   status: 'new' | 'shortlisted' | 'hold' | 'rejected';
   fileName: string;
   createdAt: string;
@@ -30,19 +32,21 @@ export const candidateService = {
       formData.append('resumes', file);
     });
 
-    const response = await api.post(`/candidates/upload/${jobId}`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+    const response = await axios.post(`${API_BASE_URL}/candidates/upload/${jobId}`, formData, {
+      headers: { 
+        'Content-Type': 'multipart/form-data' 
+      },
     });
     return response.data;
   },
 
   getCandidatesByJob: async (jobId: string) => {
-    const response = await api.get(`/candidates/job/${jobId}`);
+    const response = await axios.get(`${API_BASE_URL}/candidates/job/${jobId}`);
     return response.data;
   },
 
   updateStatus: async (candidateId: string, status: string) => {
-    const response = await api.patch(`/candidates/${candidateId}/status`, { status });
+    const response = await axios.patch(`${API_BASE_URL}/candidates/${candidateId}/status`, { status });
     return response.data;
   },
 };

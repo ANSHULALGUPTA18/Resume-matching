@@ -4,6 +4,8 @@ import JobUpload from '../components/upload/JobUpload';
 import ResumeUpload from '../components/upload/ResumeUpload';
 import CandidateList from '../components/candidates/CandidateList';
 import { useApp } from '../contexts/AppContext';
+import ResumesWidget from '../components/upload/ResumesWidget';
+import CheckFitButton from '../components/upload/CheckFitButton';
 
 const Dashboard: React.FC = () => {
   const { currentJob, candidates } = useApp();
@@ -13,8 +15,8 @@ const Dashboard: React.FC = () => {
       <Header />
       
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left Sidebar - Upload Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          {/* Left Sidebar - Upload Section (unchanged) */}
           <div className="lg:col-span-1 space-y-6">
             <JobUpload />
             <ResumeUpload />
@@ -26,23 +28,23 @@ const Dashboard: React.FC = () => {
                   <div>
                     <p className="text-sm font-medium text-gray-700">Required Skills:</p>
                     <div className="flex flex-wrap gap-1 mt-1">
-                      {currentJob.requirements.skills.map((skill, index) => (
+                      {currentJob.requirements?.skills?.map((skill, index) => (
                         <span key={index} className="px-2 py-1 bg-indigo-100 text-indigo-700 text-xs rounded">
                           {skill}
                         </span>
-                      ))}
+                      )) || <span className="text-sm text-gray-500">No skills specified</span>}
                     </div>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-gray-700">Experience:</p>
-                    <p className="text-sm text-gray-600">{currentJob.requirements.experience}+ years</p>
+                    <p className="text-sm text-gray-600">{currentJob.requirements?.experience || 0}+ years</p>
                   </div>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Main Content Area */}
+          {/* Main Content Area (2 columns) */}
           <div className="lg:col-span-2">
             {candidates.length > 0 ? (
               <CandidateList />
@@ -71,6 +73,12 @@ const Dashboard: React.FC = () => {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Right Sidebar - Resumes list and Check Fit */}
+          <div className="lg:col-span-1 space-y-4">
+            <ResumesWidget />
+            <CheckFitButton />
           </div>
         </div>
       </div>

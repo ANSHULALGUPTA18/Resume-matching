@@ -26,11 +26,16 @@ router.post('/upload', async (req, res) => {
     // Parse job description
     const parsedJob = parserService.parseJobDescription(text);
 
+    // Determine company safely (req.body may be undefined when only files are sent)
+    const companyName = (req as any).body && (req as any).body.company
+      ? (req as any).body.company
+      : 'Company';
+
     // Save to database
     const job = new Job({
       ...parsedJob,
       fileName: jdFile.name,
-      company: req.body.company || 'Company'
+      company: companyName
     });
 
     await job.save();
@@ -64,6 +69,43 @@ router.get('/:id', async (req, res) => {
     }
     res.json(job);
   } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Import job description from raw text
+router.post('/import-text', async (req, res) => {
+  try {
+    const body = (req as any).body || {};
+    const text: string = body.text;
+    if (!text || typeof text !== 'string' || !text.trim()) {
+      return res.status(400).json({ message: 'Text is required' });
+    }
+
+    const companyName: string = body.company && typeof body.company === 'string' ? body.company : 'Company';
+    const titleFromBody: string | undefined = body.title && typeof body.title === 'string' ? body.title : undefined;
+
+    // Parse job description
+    const parsedJob = parserService.parseJobDescription(text);
+
+    const job = new Job({
+      title: titleFromBody || parsedJob.title || 'Job Title',
+      company: companyName,
+      description: parsedJob.description || '',
+      requirements: parsedJob.requirements || { skills: [], experience: 0, education: [], certifications: [] },
+      keywords: parsedJob.keywords || [],
+      rawText: text,
+      fileName: body.fileName || 'manual-input.txt'
+    });
+
+    await job.save();
+
+    res.json({
+      message: 'Job description imported successfully',
+      job
+    });
+  } catch (error: any) {
+    console.error('Error importing JD from text:', error);
     res.status(500).json({ message: error.message });
   }
 });
