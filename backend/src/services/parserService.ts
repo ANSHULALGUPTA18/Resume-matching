@@ -94,7 +94,7 @@ const SKILL_KEYWORDS = [
 ];
 
 class ParserService {
-  // Extract text from PDF using pdfjs-dist (handles more PDF variants than pdf-parse)
+  // Extract text from PDF using pdfjs-dist with proper line-break detection
   async extractTextFromPDF(filePath: string): Promise<string> {
     try {
       const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
@@ -107,13 +107,30 @@ class ParserService {
       for (let i = 1; i <= doc.numPages; i++) {
         const page = await doc.getPage(i);
         const content = await page.getTextContent();
-        const pageText = content.items
-          .map((item: any) => item.str)
-          .join(' ');
-        textParts.push(pageText);
+        const items = content.items as any[];
+
+        if (items.length === 0) continue;
+
+        // Build lines by detecting Y-position changes
+        let currentLine = '';
+        let lastY: number | null = null;
+
+        for (const item of items) {
+          const y = Math.round(item.transform[5]); // Y-position from transform matrix
+          if (lastY !== null && Math.abs(y - lastY) > 3) {
+            // Y changed significantly — this is a new line
+            textParts.push(currentLine.trim());
+            currentLine = '';
+          }
+          currentLine += (currentLine && item.str ? ' ' : '') + item.str;
+          lastY = y;
+        }
+        if (currentLine.trim()) {
+          textParts.push(currentLine.trim());
+        }
       }
 
-      const fullText = textParts.join('\n').trim();
+      const fullText = textParts.filter(l => l.length > 0).join('\n').trim();
 
       if (fullText.length === 0) {
         throw new Error(
@@ -163,8 +180,8 @@ class ParserService {
     }
   }
 
-  // Parse resume text
-  parseResume(text: string): ParsedResume {
+  // Parse resume text (fileName is optional, used as fallback for name extraction)
+  parseResume(text: string, fileName?: string): ParsedResume {
     if (!text || typeof text !== 'string') {
       return {
         personalInfo: { name: 'Unknown', email: '', phone: '', location: '' },
@@ -189,7 +206,7 @@ class ParserService {
     const phone = phoneMatch ? phoneMatch[0] : '';
 
     // Extract name with robust logic
-    const name = this.extractName(lines, email, phone);
+    const name = this.extractName(lines, email, phone, fileName);
 
     // Extract skills using shared keyword list
     const foundSkills = this.extractSkillsFromText(text);
@@ -438,63 +455,168 @@ class ParserService {
 
   /**
    * Robust name extraction from resume text.
-   * Tries multiple strategies in order of reliability:
-   * 1. First line that looks like a human name (2-4 capitalized words)
-   * 2. First non-empty line that isn't an email, phone, URL, or section header
-   * 3. Fallback to filename-based extraction or 'Unknown'
+   * Handles sidebar layouts, non-standard ordering, and multi-column PDFs.
+   *
+   * Strategies (in order):
+   * 1. Scan ALL lines for a clean "Firstname Lastname" pattern (mixed case)
+   * 2. Scan ALL lines for an ALL-CAPS name (e.g., "ANSHU LAL GUPTA")
+   * 3. Look for name near email/phone context lines
+   * 4. Derive from email address
+   * 5. Derive from filename
    */
-  private extractName(lines: string[], email: string, phone: string): string {
-    // Section headers and non-name patterns to skip
-    const sectionHeaders = /^(summary|objective|experience|education|skills|certifications|projects|references|profile|contact|about|work|employment|professional|technical|personal|curriculum|resume|cv)\b/i;
-    const urlPattern = /^(https?:\/\/|www\.)/i;
-    const datePattern = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|20\d{2}|19\d{2})/i;
-    const phonePattern = /^[\+\d\(\).\-\s]{7,}/;
+  private extractName(lines: string[], email: string, phone: string, fileName?: string): string {
+    // Check if a string looks like a human name
+    const isNameLike = (s: string): boolean => {
+      const words = s.trim().split(/\s+/);
+      if (words.length < 2 || words.length > 4) return false;
+      return words.every(w => /^[A-Za-z'-]+$/.test(w) && w.length >= 2);
+    };
 
-    // Strategy 1: Look for a line that matches typical name patterns
-    // (2-4 words, each starting with uppercase, no special characters)
-    const namePattern = /^[A-Z][a-zA-Z'-]+(?:\s+[A-Z][a-zA-Z'-]+){1,3}$/;
+    // Convert to Title Case
+    const toTitleCase = (s: string): string =>
+      s.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 
-    for (const line of lines.slice(0, 10)) { // only check first 10 lines
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.length < 3 || trimmed.length > 60) continue;
+    // Check if a segment is a name (not a job title, cert, or tech term)
+    const isNotJobTitle = (s: string): boolean => {
+      const l = s.toLowerCase();
+      const titleWords = ['manager', 'engineer', 'developer', 'analyst', 'director', 'specialist',
+        'technician', 'coordinator', 'consultant', 'administrator', 'professional', 'certified',
+        'architect', 'designer', 'lead', 'senior', 'junior', 'intern', 'associate', 'officer',
+        'project', 'management', 'network', 'field', 'pmp', 'safe', 'scrum', 'agile'];
+      const hits = titleWords.filter(t => l.includes(t)).length;
+      return hits === 0;
+    };
 
-      // Skip lines that are clearly not names
-      if (trimmed.includes('@')) continue;
-      if (sectionHeaders.test(trimmed)) continue;
-      if (urlPattern.test(trimmed)) continue;
-      if (datePattern.test(trimmed)) continue;
-      if (phonePattern.test(trimmed)) continue;
-      if (email && trimmed.includes(email)) continue;
-      if (phone && trimmed.includes(phone)) continue;
-
-      // Check if line looks like a proper name
-      if (namePattern.test(trimmed)) {
-        return trimmed;
-      }
-    }
-
-    // Strategy 2: Relaxed matching - first reasonable line in top 5
+    // Strategy 0: Extract name from header lines with separators (|, tabs)
+    // e.g., "Calvin McGuire | +1(804) 296-5691 | email@example.com"
+    // e.g., "ADIKA MAUL Tallahassee, FL | 850-242-3188"
     for (const line of lines.slice(0, 5)) {
       const trimmed = line.trim();
-      if (!trimmed || trimmed.length < 3 || trimmed.length > 60) continue;
-      if (trimmed.includes('@')) continue;
-      if (sectionHeaders.test(trimmed)) continue;
-      if (urlPattern.test(trimmed)) continue;
-      if (phonePattern.test(trimmed)) continue;
+      if (!trimmed) continue;
+      // Skip lines that are clearly section content (contain : followed by list items)
+      if (/:\s+\S/.test(trimmed) && !trimmed.includes('|')) continue;
 
-      // Must contain at least one letter and have at least 2 "word" parts
-      const words = trimmed.split(/\s+/).filter(w => /[a-zA-Z]/.test(w));
-      if (words.length >= 2 && words.length <= 5) {
+      // Split by common separators used in resume headers
+      const segments = trimmed.split(/[|·•\t]/).map(s => s.trim()).filter(s => s.length > 0);
+      const firstSeg = segments[0];
+
+      if (firstSeg) {
+        // Clean: remove phone, email, and trailing content
+        let candidate = firstSeg
+          .replace(/\+?\d[\d\s().-]{8,}/, '')              // remove phone numbers
+          .replace(/\b[A-Za-z0-9._%+-]+@\S+/, '')          // remove email
+          .replace(/,\s*[A-Z]{2}\b.*$/, '')                 // remove ", FL" etc.
+          .replace(/,.*$/, '')                               // remove everything after first comma
+          .replace(/\b\d{5,}\b.*$/, '')                     // remove zip codes
+          .trim();
+
+        // First try: use the original space-separated words (before any splitting)
+        const origWords = candidate.split(/\s+/).filter(w =>
+          /^[A-Za-z'-]+$/.test(w) && w.length >= 2 && w.length <= 12
+        );
+
+        if (origWords.length >= 2 && origWords.length <= 4) {
+          const nameCandidate = origWords.join(' ');
+          if (isNotJobTitle(nameCandidate)) {
+            if (/^[A-Z\s'-]+$/.test(nameCandidate)) {
+              return toTitleCase(nameCandidate);
+            }
+            if (isNameLike(nameCandidate)) {
+              return nameCandidate;
+            }
+          }
+        }
+      }
+    }
+
+    // Lines that are definitely not names (for clean-line strategies)
+    const nonNameLine = (line: string): boolean => {
+      const l = line.trim();
+      if (!l || l.length < 3 || l.length > 50) return true;
+      if (l.includes('@')) return true;
+      if (l.includes('://') || l.startsWith('www.')) return true;
+      if (/^[\+\d\(\).\-\s]{7,}$/.test(l)) return true;
+      if (/[:,;|•·\/\\]/.test(l)) return true;
+      if (/^\d/.test(l)) return true;
+      if (/^(summary|objective|experience|education|skills|certifications|projects|references|profile|contact|about|work|employment|professional|technical|personal|curriculum|resume|cv|languages|framework|tools|soft\s*skills|data|cloud|visualization|internship)\b/i.test(l)) return true;
+      const techTerms = ['python', 'java', 'sql', 'react', 'node', 'docker', 'aws', 'azure', 'git', 'linux', 'html', 'css', 'api', 'ml', 'ai', 'etl', 'ci/cd'];
+      const lLower = l.toLowerCase();
+      const techCount = techTerms.filter(t => lLower.includes(t)).length;
+      if (techCount >= 2) return true;
+      if (!isNotJobTitle(l)) return true;
+      return false;
+    };
+
+    // Strategy 1: Scan for mixed-case name (e.g., "Anshu Lal Gupta")
+    const mixedCasePattern = /^[A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3}$/;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (nonNameLine(trimmed)) continue;
+      if (mixedCasePattern.test(trimmed)) {
         return trimmed;
       }
     }
 
-    // Strategy 3: Try to extract name from email (e.g., john.doe@email.com → John Doe)
+    // Strategy 2: Scan for ALL-CAPS name (e.g., "ANSHU LAL GUPTA")
+    const allCapsPattern = /^[A-Z][A-Z'-]+(?:\s+[A-Z][A-Z'-]+){1,3}$/;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (nonNameLine(trimmed)) continue;
+      if (allCapsPattern.test(trimmed) && trimmed.length <= 40) {
+        return toTitleCase(trimmed);
+      }
+    }
+
+    // Strategy 3: First non-garbage line with 2-4 words
+    for (const line of lines.slice(0, 15)) {
+      const trimmed = line.trim();
+      if (nonNameLine(trimmed)) continue;
+      if (isNameLike(trimmed)) {
+        return trimmed;
+      }
+    }
+
+    // Strategy 4: Derive from filename (often the most reliable for DOCX)
+    // Handles: "Anshu (1).pdf", "Comolyn Weeks_State of GA_Original (1).docx"
+    if (fileName) {
+      let baseName = fileName.replace(/\.[^.]+$/, '');
+      baseName = baseName.replace(/^resume_\d+_/, '');
+      const underscoreSegments = baseName.split('_');
+      let nameSegment = underscoreSegments[0].trim();
+      nameSegment = nameSegment.replace(/\s*\(\d+\)\s*/g, '').trim();
+
+      const words = nameSegment.split(/\s+/).filter(w => /^[a-zA-Z'-]+$/.test(w) && w.length >= 2);
+      if (words.length >= 2 && words.length <= 4) {
+        const nameFromFile = words.map(w => {
+          if (/[a-z]/.test(w) && /[A-Z]/.test(w)) return w;
+          return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+        }).join(' ');
+        if (isNotJobTitle(nameFromFile)) {
+          return nameFromFile;
+        }
+      }
+    }
+
+    // Strategy 5: Derive from email (e.g., john.doe@gmail.com → John Doe)
     if (email) {
       const localPart = email.split('@')[0];
       const nameParts = localPart.split(/[._-]/).filter(p => p.length > 1 && /^[a-zA-Z]+$/.test(p));
       if (nameParts.length >= 2) {
         return nameParts.map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ');
+      }
+    }
+
+    // Strategy 6: Derive from filename (single word / relaxed)
+    if (fileName) {
+      let baseName = fileName.replace(/\.[^.]+$/, '');
+      baseName = baseName.replace(/^resume_\d+_/, '');
+      const nameSegment = baseName.split('_')[0].replace(/\s*\(\d+\)\s*/g, '').trim();
+      const words = nameSegment.split(/\s+/).filter(w => /^[a-zA-Z'-]+$/.test(w) && w.length >= 2);
+      if (words.length >= 1 && words.length <= 4) {
+        return words.map(w => {
+          if (/[a-z]/.test(w) && /[A-Z]/.test(w)) return w;
+          return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+        }).join(' ');
       }
     }
 

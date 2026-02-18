@@ -52,8 +52,8 @@ router.post('/upload/:jobId', async (req, res) => {
       const text = await parserService.extractText(uploadPath);
       console.log('Text extracted from resume, length:', text.length);
       
-      const parsedResume = parserService.parseResume(text);
-      console.log('Resume parsed, skills found:', parsedResume.skills.length);
+      const parsedResume = parserService.parseResume(text, resumeFile.name);
+      console.log('Resume parsed, name:', parsedResume.personalInfo.name, ', skills found:', parsedResume.skills.length);
 
       // Calculate score
       const scoringResult = scoringService.calculateScore(parsedResume, job);
