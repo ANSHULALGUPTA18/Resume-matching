@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import fileUpload from 'express-fileupload';
 import path from 'path';
+import fs from 'fs';
 
 // Load environment variables
 dotenv.config();
@@ -44,7 +45,6 @@ app.use((req, res, next) => {
 });
 
 // Create upload directories if they don't exist
-import fs from 'fs';
 const uploadDirs = ['./uploads', './uploads/resumes', './uploads/jd'];
 uploadDirs.forEach(dir => {
   if (!fs.existsSync(dir)) {
@@ -58,7 +58,7 @@ app.use('/api/candidates', candidateRoutes);
 app.use('/api/scoring', scoringRoutes);
 app.use('/api/interview-prep', interviewPrepRoutes);
 
-console.log('✅ Routes registered: /api/jobs, /api/candidates, /api/scoring, /api/interview-prep');
+console.log('Routes registered: /api/jobs, /api/candidates, /api/scoring, /api/interview-prep');
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -69,10 +69,26 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-// Database connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/ats_resume_optimizer')
-  .then(() => console.log('MongoDB connected successfully'))
-  .catch(err => console.error('MongoDB connection error:', err));
+// Database connection with retry logic
+const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/ats_resume_optimizer';
+
+const connectWithRetry = () => {
+  mongoose.connect(MONGO_URI, {
+    serverSelectionTimeoutMS: 5000,
+  })
+    .then(() => console.log('MongoDB connected successfully'))
+    .catch(err => {
+      console.error('MongoDB connection failed:', err.message);
+      console.log('Retrying MongoDB connection in 5 seconds...');
+      setTimeout(connectWithRetry, 5000);
+    });
+};
+
+mongoose.connection.on('disconnected', () => {
+  console.warn('MongoDB disconnected. Attempting reconnect...');
+});
+
+connectWithRetry();
 
 const PORT = process.env.PORT || 5000;
 
