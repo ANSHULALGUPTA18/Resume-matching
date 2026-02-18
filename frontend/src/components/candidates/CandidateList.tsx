@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import CandidateCard from './CandidateCard';
 import { useApp } from '../../contexts/AppContext';
+import { candidateService } from '../../services/candidateService';
+import toast from 'react-hot-toast';
 
 const CandidateList: React.FC = () => {
-  const { candidates } = useApp();
+  const { candidates, updateCandidateStatus } = useApp();
   const [filter, setFilter] = useState('all');
   const [sortBy, setSortBy] = useState('score');
 
@@ -18,9 +20,15 @@ const CandidateList: React.FC = () => {
     return 0;
   });
 
-  const refreshCandidates = async () => {
-    // Refresh candidates list after status change
-    // In a real app, you'd fetch from API
+  const handleStatusChange = async (candidateId: string, newStatus: string) => {
+    try {
+      await candidateService.updateStatus(candidateId, newStatus);
+      // Update local state so Header counters and filters re-render immediately
+      updateCandidateStatus(candidateId, newStatus);
+      toast.success(`Candidate ${newStatus}`);
+    } catch (error) {
+      toast.error('Failed to update status');
+    }
   };
 
   return (
@@ -79,7 +87,7 @@ const CandidateList: React.FC = () => {
             <CandidateCard
               key={candidate._id}
               candidate={candidate}
-              onStatusChange={refreshCandidates}
+              onStatusChange={handleStatusChange}
             />
           ))}
         </div>

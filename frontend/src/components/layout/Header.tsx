@@ -18,7 +18,7 @@ const Header: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold">ATS Resume Optimizer Pro</h1>
+            <h1 className="text-3xl font-bold">Resume Matching</h1>
             {currentJob && (
               <p className="mt-1 text-indigo-200">
                 {currentJob.title} at {currentJob.company}

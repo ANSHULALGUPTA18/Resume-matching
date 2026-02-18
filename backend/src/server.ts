@@ -12,17 +12,36 @@ dotenv.config();
 import jobRoutes from './routes/jobRoutes';
 import candidateRoutes from './routes/candidateRoutes';
 import scoringRoutes from './routes/scoringRoutes';
+import interviewPrepRoutes from './routes/interviewPrepRoutes';
 
 const app: Application = express();
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Middleware - CORS first
+app.use(cors({
+  origin: 'http://localhost:3000',
+  credentials: true
+}));
+
+// File upload middleware - BEFORE body parsers
 app.use(fileUpload({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
   abortOnLimit: true,
+  createParentPath: true,
+  useTempFiles: false
 }));
+
+// Body parsers
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Request logging
+app.use((req, res, next) => {
+  console.log(`${req.method} ${req.path}`);
+  if (req.files) {
+    console.log('Files received:', Object.keys(req.files));
+  }
+  next();
+});
 
 // Create upload directories if they don't exist
 import fs from 'fs';
@@ -37,6 +56,9 @@ uploadDirs.forEach(dir => {
 app.use('/api/jobs', jobRoutes);
 app.use('/api/candidates', candidateRoutes);
 app.use('/api/scoring', scoringRoutes);
+app.use('/api/interview-prep', interviewPrepRoutes);
+
+console.log('✅ Routes registered: /api/jobs, /api/candidates, /api/scoring, /api/interview-prep');
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

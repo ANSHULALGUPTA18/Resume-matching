@@ -9,26 +9,35 @@ const router = express.Router();
 // Upload and parse job description
 router.post('/upload', async (req, res) => {
   try {
+    console.log('Job upload request received');
+    console.log('Files:', req.files ? Object.keys(req.files) : 'none');
+    console.log('Body:', req.body);
+    
     if (!req.files || !req.files.jd) {
-      return res.status(400).json({ message: 'No file uploaded' });
+      console.error('No file uploaded - req.files:', req.files);
+      return res.status(400).json({ message: 'No file uploaded. Please select a job description file.' });
     }
 
     const jdFile = req.files.jd as UploadedFile;
+    console.log('File received:', jdFile.name, 'Size:', jdFile.size);
+    
     const fileName = `jd_${Date.now()}${path.extname(jdFile.name)}`;
     const uploadPath = path.join(__dirname, '../../uploads/jd', fileName);
 
     // Save file
     await jdFile.mv(uploadPath);
+    console.log('File saved to:', uploadPath);
 
     // Extract text
     const text = await parserService.extractText(uploadPath);
+    console.log('Text extracted, length:', text.length);
     
     // Parse job description
     const parsedJob = parserService.parseJobDescription(text);
 
-    // Determine company safely (req.body may be undefined when only files are sent)
-    const companyName = (req as any).body && (req as any).body.company
-      ? (req as any).body.company
+    // Determine company safely
+    const companyName = req.body && req.body.company
+      ? req.body.company
       : 'Company';
 
     // Save to database

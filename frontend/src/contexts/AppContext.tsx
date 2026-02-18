@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 import { Job } from '../services/jobService';
 import { Candidate } from '../services/candidateService';
 
@@ -14,6 +14,7 @@ interface AppContextType {
   setCurrentJob: (job: Job | null) => void;
   candidates: Candidate[];
   setCandidates: (candidates: Candidate[]) => void;
+  updateCandidateStatus: (candidateId: string, newStatus: string) => void;
   uploadedResumes: UploadedResume[];
   setUploadedResumes: (resumes: UploadedResume[]) => void;
   addUploadedResumes: (resumes: UploadedResume[]) => void;
@@ -41,6 +42,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setUploadedResumes(prev => [...prev, ...newResumes]);
   };
 
+  /**
+   * Update a single candidate's status in the local state.
+   * This ensures Header counters and filter counts re-render immediately.
+   */
+  const updateCandidateStatus = useCallback((candidateId: string, newStatus: string) => {
+    setCandidates(prev =>
+      prev.map(c =>
+        c._id === candidateId ? { ...c, status: newStatus as Candidate['status'] } : c
+      )
+    );
+  }, []);
+
   return (
     <AppContext.Provider
       value={{
@@ -48,6 +61,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setCurrentJob,
         candidates,
         setCandidates,
+        updateCandidateStatus,
         uploadedResumes,
         setUploadedResumes,
         addUploadedResumes,

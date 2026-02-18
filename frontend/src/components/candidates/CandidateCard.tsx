@@ -2,12 +2,10 @@ import React from 'react';
 import { CircularProgressbar, buildStyles } from 'react-circular-progressbar';
 import 'react-circular-progressbar/dist/styles.css';
 import { Candidate } from '../../services/candidateService';
-import { candidateService } from '../../services/candidateService';
-import toast from 'react-hot-toast';
 
 interface Props {
   candidate: Candidate;
-  onStatusChange: () => void;
+  onStatusChange: (candidateId: string, newStatus: string) => void;
 }
 
 const CandidateCard: React.FC<Props> = ({ candidate, onStatusChange }) => {
@@ -17,23 +15,13 @@ const CandidateCard: React.FC<Props> = ({ candidate, onStatusChange }) => {
     return '#ef4444';
   };
 
-  const handleStatusChange = async (status: string) => {
-    try {
-      await candidateService.updateStatus(candidate._id, status);
-      toast.success(`Candidate ${status}`);
-      onStatusChange();
-    } catch (error) {
-      toast.error('Failed to update status');
-    }
-  };
-
   return (
     <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow">
       <div className="flex items-start justify-between">
         <div className="flex-1">
           <div className="flex items-center mb-3">
             <div className="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-full flex items-center justify-center text-white font-bold text-lg mr-4">
-              {candidate.personalInfo?.name?.split(' ').map(n => n[0]).join('') || 'N/A'}
+              {candidate.personalInfo?.name?.split(' ').map(n => n[0]).join('').slice(0, 2) || 'N/A'}
             </div>
             <div>
               <h3 className="text-lg font-semibold text-gray-900">
@@ -78,7 +66,7 @@ const CandidateCard: React.FC<Props> = ({ candidate, onStatusChange }) => {
           <div className="flex gap-2">
             {candidate.status !== 'shortlisted' && (
               <button
-                onClick={() => handleStatusChange('shortlisted')}
+                onClick={() => onStatusChange(candidate._id, 'shortlisted')}
                 className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm"
               >
                 Shortlist
@@ -86,7 +74,7 @@ const CandidateCard: React.FC<Props> = ({ candidate, onStatusChange }) => {
             )}
             {candidate.status !== 'hold' && (
               <button
-                onClick={() => handleStatusChange('hold')}
+                onClick={() => onStatusChange(candidate._id, 'hold')}
                 className="px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors text-sm"
               >
                 Hold
@@ -94,7 +82,7 @@ const CandidateCard: React.FC<Props> = ({ candidate, onStatusChange }) => {
             )}
             {candidate.status !== 'rejected' && (
               <button
-                onClick={() => handleStatusChange('rejected')}
+                onClick={() => onStatusChange(candidate._id, 'rejected')}
                 className="px-4 py-2 border border-red-600 text-red-600 rounded-md hover:bg-red-50 transition-colors text-sm"
               >
                 Reject
@@ -117,7 +105,7 @@ const CandidateCard: React.FC<Props> = ({ candidate, onStatusChange }) => {
           </div>
           <div className="mt-2 text-center">
             <span className={`px-2 py-1 rounded-full text-xs font-medium
-              ${candidate.status === 'shortlisted' ? 'bg-green-100 text-green-800' : 
+              ${candidate.status === 'shortlisted' ? 'bg-green-100 text-green-800' :
                 candidate.status === 'hold' ? 'bg-yellow-100 text-yellow-800' :
                 candidate.status === 'rejected' ? 'bg-red-100 text-red-800' :
                 'bg-gray-100 text-gray-800'}`}>
