@@ -1,4 +1,3 @@
-import pdf from 'pdf-parse';
 import mammoth from 'mammoth';
 import fs from 'fs';
 import path from 'path';
@@ -95,15 +94,44 @@ const SKILL_KEYWORDS = [
 ];
 
 class ParserService {
-  // Extract text from PDF
+  // Extract text from PDF using pdfjs-dist (handles more PDF variants than pdf-parse)
   async extractTextFromPDF(filePath: string): Promise<string> {
     try {
+      const pdfjsLib = require('pdfjs-dist/legacy/build/pdf.js');
       const dataBuffer = fs.readFileSync(filePath);
-      const data = await pdf(dataBuffer);
-      return data.text;
-    } catch (error) {
-      console.error('Error parsing PDF:', error);
-      throw new Error('Failed to parse PDF file');
+      const uint8Array = new Uint8Array(dataBuffer);
+
+      const doc = await pdfjsLib.getDocument({ data: uint8Array }).promise;
+      const textParts: string[] = [];
+
+      for (let i = 1; i <= doc.numPages; i++) {
+        const page = await doc.getPage(i);
+        const content = await page.getTextContent();
+        const pageText = content.items
+          .map((item: any) => item.str)
+          .join(' ');
+        textParts.push(pageText);
+      }
+
+      const fullText = textParts.join('\n').trim();
+
+      if (fullText.length === 0) {
+        throw new Error(
+          'No text could be extracted from this PDF. It may be image-based (scanned). ' +
+          'Please use the "Write Text" option to paste the job description manually.'
+        );
+      }
+
+      return fullText;
+    } catch (error: any) {
+      console.error('Error parsing PDF:', error.message);
+      if (error.message.includes('No text could be extracted')) {
+        throw error;
+      }
+      throw new Error(
+        'Failed to parse PDF file. The file may be corrupted or in an unsupported format. ' +
+        'Try re-saving it as a new PDF, or use the "Write Text" option instead.'
+      );
     }
   }
 

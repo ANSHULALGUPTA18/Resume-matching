@@ -55,7 +55,8 @@ router.post('/upload', async (req, res) => {
     });
   } catch (error: any) {
     console.error('Error uploading JD:', error);
-    res.status(500).json({ message: error.message });
+    const message = error.message || 'Failed to process job description';
+    res.status(500).json({ message });
   }
 });
 
