@@ -33,6 +33,8 @@ export interface ICandidate extends Document {
   resumePath: string;
   rawText: string;
   fileName: string;
+  embedding?: number[];      // Local BAAI/bge-large-en-v1.5 vector (1024 dims)
+  semanticScore?: number;    // cosine similarity × 100 when vector mode used
   createdAt: Date;
   updatedAt: Date;
 }
@@ -73,7 +75,9 @@ const CandidateSchema: Schema = new Schema({
   },
   resumePath: String,
   rawText: String,
-  fileName: String
+  fileName: String,
+  embedding: { type: [Number], select: false },
+  semanticScore: Number
 }, {
   timestamps: true
 });

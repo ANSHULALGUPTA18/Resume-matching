@@ -3,6 +3,7 @@ import { UploadedFile } from 'express-fileupload';
 import path from 'path';
 import Job from '../models/Job';
 import parserService from '../services/parserService';
+import vectorService from '../services/vectorService';
 
 const router = express.Router();
 
@@ -48,6 +49,15 @@ router.post('/upload', async (req, res) => {
     });
 
     await job.save();
+
+    // Generate embedding (non-blocking — don't fail upload if embedding fails)
+    try {
+      const embeddingText = job.rawText || job.description;
+      job.embedding = await vectorService.generateEmbedding(embeddingText, 'query');
+      await job.save();
+    } catch (err: any) {
+      console.warn('Job embedding generation failed:', err.message);
+    }
 
     res.json({
       message: 'Job description uploaded and parsed successfully',
@@ -109,6 +119,15 @@ router.post('/import-text', async (req, res) => {
     });
 
     await job.save();
+
+    // Generate embedding (non-blocking — don't fail import if embedding fails)
+    try {
+      const embeddingText = job.rawText || job.description;
+      job.embedding = await vectorService.generateEmbedding(embeddingText, 'query');
+      await job.save();
+    } catch (err: any) {
+      console.warn('Job embedding generation failed:', err.message);
+    }
 
     res.json({
       message: 'Job description imported successfully',

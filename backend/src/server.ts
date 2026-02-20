@@ -17,9 +17,13 @@ import interviewPrepRoutes from './routes/interviewPrepRoutes';
 
 const app: Application = express();
 
-// Middleware - CORS first
+// Middleware - CORS
+const allowedOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',')
+  : ['http://localhost:3000'];
+
 app.use(cors({
-  origin: 'http://localhost:3000',
+  origin: process.env.NODE_ENV === 'production' ? true : allowedOrigins,
   credentials: true
 }));
 
@@ -45,7 +49,8 @@ app.use((req, res, next) => {
 });
 
 // Create upload directories if they don't exist
-const uploadDirs = ['./uploads', './uploads/resumes', './uploads/jd'];
+const uploadsBase = path.resolve(__dirname, '..', 'uploads');
+const uploadDirs = [uploadsBase, path.join(uploadsBase, 'resumes'), path.join(uploadsBase, 'jd')];
 uploadDirs.forEach(dir => {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -59,6 +64,15 @@ app.use('/api/scoring', scoringRoutes);
 app.use('/api/interview-prep', interviewPrepRoutes);
 
 console.log('Routes registered: /api/jobs, /api/candidates, /api/scoring, /api/interview-prep');
+
+// Serve React frontend in production
+if (process.env.NODE_ENV === 'production') {
+  const clientBuildPath = path.resolve(__dirname, '..', 'public');
+  app.use(express.static(clientBuildPath));
+  app.get('/{*path}', (req, res) => {
+    res.sendFile(path.join(clientBuildPath, 'index.html'));
+  });
+}
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

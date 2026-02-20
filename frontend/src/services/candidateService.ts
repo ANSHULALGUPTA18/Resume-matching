@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
 
 export interface Candidate {
   _id: string;
@@ -21,6 +21,7 @@ export interface Candidate {
   };
   improvements?: string[];
   status: 'new' | 'shortlisted' | 'hold' | 'rejected';
+  semanticScore?: number;
   fileName: string;
   createdAt: string;
 }

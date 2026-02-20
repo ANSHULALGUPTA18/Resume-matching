@@ -13,6 +13,7 @@ export interface IJob extends Document {
   keywords: string[];
   rawText: string;
   fileName: string;
+  embedding?: number[];      // Local BAAI/bge-large-en-v1.5 vector (1024 dims)
   createdAt: Date;
   updatedAt: Date;
 }
@@ -29,7 +30,8 @@ const JobSchema: Schema = new Schema({
   },
   keywords: [String],
   rawText: String,
-  fileName: String
+  fileName: String,
+  embedding: { type: [Number], select: false }
 }, {
   timestamps: true
 });

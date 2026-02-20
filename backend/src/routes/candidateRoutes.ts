@@ -5,6 +5,7 @@ import Candidate from '../models/Candidate';
 import Job from '../models/Job';
 import parserService from '../services/parserService';
 import scoringService from '../services/scoringService';
+import vectorService from '../services/vectorService';
 
 const router = express.Router();
 
@@ -59,7 +60,7 @@ router.post('/upload/:jobId', async (req, res) => {
       const scoringResult = scoringService.calculateScore(parsedResume, job);
       console.log('Score calculated:', scoringResult.score.overall);
 
-      // Save candidate
+      // Build candidate (not yet saved)
       const candidate = new Candidate({
         jobId,
         ...parsedResume,
@@ -68,6 +69,26 @@ router.post('/upload/:jobId', async (req, res) => {
         resumePath: uploadPath,
         fileName: resumeFile.name
       });
+
+      // Generate embedding (non-blocking — don't fail upload if embedding fails)
+      try {
+        const embedding = await vectorService.generateEmbedding(text, 'passage');
+        candidate.embedding = embedding;
+
+        const jobWithEmbedding = await Job.findById(jobId).select('+embedding');
+        if (process.env.MATCHING_MODE === 'vector' && jobWithEmbedding?.embedding?.length) {
+          // Safety check: only compute similarity if dimensions match
+          if (jobWithEmbedding.embedding.length === embedding.length) {
+            const semanticScore = vectorService.scoreFromEmbeddings(jobWithEmbedding.embedding, embedding);
+            candidate.semanticScore = semanticScore;
+            candidate.score.overall = semanticScore;
+          } else {
+            console.warn(`Dimension mismatch: job=${jobWithEmbedding.embedding.length}d, resume=${embedding.length}d. Skipping semantic score.`);
+          }
+        }
+      } catch (err: any) {
+        console.warn('Embedding generation failed, using keyword score only:', err.message);
+      }
 
       await candidate.save();
       console.log('Candidate saved:', candidate._id);

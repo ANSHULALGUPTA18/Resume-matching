@@ -103,6 +103,13 @@ const CandidateCard: React.FC<Props> = ({ candidate, onStatusChange }) => {
               })}
             />
           </div>
+          {candidate.semanticScore !== undefined && (
+            <div className="mt-2 text-center">
+              <span className="px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                Semantic Match: {candidate.semanticScore}%
+              </span>
+            </div>
+          )}
           <div className="mt-2 text-center">
             <span className={`px-2 py-1 rounded-full text-xs font-medium
               ${candidate.status === 'shortlisted' ? 'bg-green-100 text-green-800' :
