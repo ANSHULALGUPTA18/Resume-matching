@@ -2,6 +2,13 @@ import axios from 'axios';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
 
+export interface ExtractedData {
+  yearsOfExperience: number | null;
+  educationLevel: 'none' | 'associate' | 'bachelor' | 'master' | 'phd';
+  skillsList: string[];
+  jobTitles: string[];
+}
+
 export interface Candidate {
   _id: string;
   jobId: string;
@@ -22,6 +29,7 @@ export interface Candidate {
   improvements?: string[];
   status: 'new' | 'shortlisted' | 'hold' | 'rejected';
   semanticScore?: number;
+  extractedData?: ExtractedData;
   fileName: string;
   createdAt: string;
 }
@@ -48,6 +56,11 @@ export const candidateService = {
 
   updateStatus: async (candidateId: string, status: string) => {
     const response = await axios.patch(`${API_BASE_URL}/candidates/${candidateId}/status`, { status });
+    return response.data;
+  },
+
+  deleteByJob: async (jobId: string) => {
+    const response = await axios.delete(`${API_BASE_URL}/candidates/job/${jobId}`);
     return response.data;
   },
 };

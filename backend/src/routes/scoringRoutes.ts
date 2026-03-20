@@ -20,10 +20,11 @@ router.post('/recalculate/:candidateId', async (req, res) => {
     }
 
     const scoringResult = scoringService.calculateScore(candidate, job);
-    
-    candidate.score = scoringResult.score;
-    candidate.improvements = scoringResult.improvements;
-    await candidate.save();
+
+    await Candidate.update(candidate._id, {
+      score: scoringResult.score,
+      improvements: scoringResult.improvements,
+    });
 
     res.json({
       message: 'Score recalculated successfully',
@@ -56,7 +57,7 @@ router.get('/:candidateId', async (req, res) => {
 // Bulk vector recalculation for all candidates of a job
 router.post('/vector-recalculate/:jobId', async (req, res) => {
   try {
-    const job = await Job.findById(req.params.jobId).select('+embedding');
+    const job = await Job.findById(req.params.jobId, true);
     if (!job) {
       return res.status(404).json({ message: 'Job not found' });
     }
@@ -65,27 +66,35 @@ router.post('/vector-recalculate/:jobId', async (req, res) => {
     if (!job.embedding?.length) {
       try {
         const embeddingText = job.rawText || job.description;
-        job.embedding = await vectorService.generateEmbedding(embeddingText);
-        await job.save();
+        const embedding = await vectorService.generateEmbedding(embeddingText);
+        await Job.update(job._id, { embedding });
+        job.embedding = embedding;
       } catch (err: any) {
         return res.status(500).json({ message: `Failed to generate job embedding: ${err.message}` });
       }
     }
 
-    const candidates = await Candidate.find({ jobId: req.params.jobId }).select('+embedding');
+    const candidates = await Candidate.findByJobId(req.params.jobId, true);
     const updated = [];
 
     for (const candidate of candidates) {
       try {
+        let { embedding } = candidate;
+
         // Regenerate candidate embedding if missing
-        if (!candidate.embedding?.length) {
-          candidate.embedding = await vectorService.generateEmbedding(candidate.rawText || '');
+        if (!embedding?.length) {
+          embedding = await vectorService.generateEmbedding(candidate.rawText || '');
         }
 
-        const semanticScore = vectorService.scoreFromEmbeddings(job.embedding!, candidate.embedding);
-        candidate.semanticScore = semanticScore;
-        candidate.score.overall = semanticScore;
-        await candidate.save();
+        const semanticScore = vectorService.scoreFromEmbeddings(job.embedding!, embedding!);
+        const updatedScore = { ...candidate.score, overall: semanticScore };
+
+        await Candidate.update(candidate._id, {
+          embedding,
+          semanticScore,
+          score: updatedScore,
+        });
+
         updated.push({ id: candidate._id, semanticScore });
       } catch (err: any) {
         console.warn(`Embedding failed for candidate ${candidate._id}:`, err.message);

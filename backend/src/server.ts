@@ -1,13 +1,13 @@
 import express, { Application } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import mongoose from 'mongoose';
 import fileUpload from 'express-fileupload';
 import path from 'path';
 import fs from 'fs';
+import { initDB } from './db';
 
-// Load environment variables
-dotenv.config();
+// Load environment variables — override: true ensures .env values win over system env
+dotenv.config({ override: true });
 
 // Import routes
 import jobRoutes from './routes/jobRoutes';
@@ -83,29 +83,17 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-// Database connection with retry logic
-const MONGO_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/ats_resume_optimizer';
-
-const connectWithRetry = () => {
-  mongoose.connect(MONGO_URI, {
-    serverSelectionTimeoutMS: 5000,
-  })
-    .then(() => console.log('MongoDB connected successfully'))
-    .catch(err => {
-      console.error('MongoDB connection failed:', err.message);
-      console.log('Retrying MongoDB connection in 5 seconds...');
-      setTimeout(connectWithRetry, 5000);
-    });
-};
-
-mongoose.connection.on('disconnected', () => {
-  console.warn('MongoDB disconnected. Attempting reconnect...');
-});
-
-connectWithRetry();
-
 const PORT = process.env.PORT || 5000;
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+// Initialize database tables then start server
+initDB()
+  .then(() => {
+    console.log('PostgreSQL tables initialized');
+    app.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
+    });
+  })
+  .catch(err => {
+    console.error('Failed to initialize database:', err.message || err);
+    process.exit(1);
+  });

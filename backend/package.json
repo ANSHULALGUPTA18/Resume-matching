@@ -22,11 +22,11 @@
     "express-rate-limit": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "mammoth": "^1.11.0",
-    "mongoose": "^8.18.1",
     "multer": "^2.0.2",
     "openai": "^5.22.0",
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "^3.11.174",
+    "pg": "^8.20.0",
     "uuid": "^13.0.0"
   },
   "devDependencies": {
@@ -37,6 +37,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.0.0",
     "@types/node": "^24.5.2",
+    "@types/pg": "^8.18.0",
     "@types/uuid": "^10.0.0",
     "nodemon": "^3.1.10",
     "ts-node": "^10.9.2",

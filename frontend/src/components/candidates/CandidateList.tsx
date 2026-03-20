@@ -1,17 +1,20 @@
-import React, { useState } from 'react';
+import React from 'react';
 import CandidateCard from './CandidateCard';
 import { useApp } from '../../contexts/AppContext';
 import { candidateService } from '../../services/candidateService';
 import toast from 'react-hot-toast';
 
-const CandidateList: React.FC = () => {
-  const { candidates, updateCandidateStatus } = useApp();
-  const [filter, setFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('score');
+interface Props {
+  filter: string;
+  sortBy: string;
+}
 
-  const filteredCandidates = candidates.filter(candidate => {
+const CandidateList: React.FC<Props> = ({ filter, sortBy }) => {
+  const { candidates, updateCandidateStatus } = useApp();
+
+  const filteredCandidates = candidates.filter(c => {
     if (filter === 'all') return true;
-    return candidate.status === filter;
+    return c.status === filter;
   });
 
   const sortedCandidates = [...filteredCandidates].sort((a, b) => {
@@ -23,75 +26,35 @@ const CandidateList: React.FC = () => {
   const handleStatusChange = async (candidateId: string, newStatus: string) => {
     try {
       await candidateService.updateStatus(candidateId, newStatus);
-      // Update local state so Header counters and filters re-render immediately
       updateCandidateStatus(candidateId, newStatus);
       toast.success(`Candidate ${newStatus}`);
-    } catch (error) {
+    } catch {
       toast.error('Failed to update status');
     }
   };
 
-  return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <div className="flex space-x-2">
-          <button
-            onClick={() => setFilter('all')}
-            className={`px-4 py-2 rounded-md ${
-              filter === 'all'
-                ? 'bg-indigo-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            All ({candidates.length})
-          </button>
-          <button
-            onClick={() => setFilter('shortlisted')}
-            className={`px-4 py-2 rounded-md ${
-              filter === 'shortlisted'
-                ? 'bg-green-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            Shortlisted ({candidates.filter(c => c.status === 'shortlisted').length})
-          </button>
-          <button
-            onClick={() => setFilter('hold')}
-            className={`px-4 py-2 rounded-md ${
-              filter === 'hold'
-                ? 'bg-yellow-600 text-white'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-            }`}
-          >
-            On Hold ({candidates.filter(c => c.status === 'hold').length})
-          </button>
-        </div>
-
-        <select
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value)}
-          className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        >
-          <option value="score">Sort by Score</option>
-          <option value="name">Sort by Name</option>
-        </select>
+  if (sortedCandidates.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24">
+        <svg className="h-16 w-16 text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}
+            d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+        </svg>
+        <p className="text-sm font-medium text-gray-700">No Resumes Uploaded</p>
+        <p className="text-xs mt-1" style={{ color: '#3B82F6' }}>Start By uploading job description</p>
       </div>
+    );
+  }
 
-      {sortedCandidates.length === 0 ? (
-        <div className="text-center py-12 bg-gray-50 rounded-lg">
-          <p className="text-gray-500">No candidates found</p>
-        </div>
-      ) : (
-        <div className="grid gap-4">
-          {sortedCandidates.map((candidate) => (
-            <CandidateCard
-              key={candidate._id}
-              candidate={candidate}
-              onStatusChange={handleStatusChange}
-            />
-          ))}
-        </div>
-      )}
+  return (
+    <div className="space-y-3">
+      {sortedCandidates.map(candidate => (
+        <CandidateCard
+          key={candidate._id}
+          candidate={candidate}
+          onStatusChange={handleStatusChange}
+        />
+      ))}
     </div>
   );
 };

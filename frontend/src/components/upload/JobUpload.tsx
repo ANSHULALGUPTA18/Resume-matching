@@ -1,14 +1,12 @@
 import React, { useCallback, useState } from 'react';
-
 import { useDropzone } from 'react-dropzone';
-import { DocumentTextIcon } from '@heroicons/react/24/outline';
 import { jobService } from '../../services/jobService';
+import { candidateService } from '../../services/candidateService';
 import { useApp } from '../../contexts/AppContext';
-
 import toast from 'react-hot-toast';
 
 const JobUpload: React.FC = () => {
-  const { currentJob, setCurrentJob, setLoading } = useApp();
+  const { currentJob, setCurrentJob, setCandidates, setUploadedResumes } = useApp();
   const [company, setCompany] = useState('');
   const [mode, setMode] = useState<'upload' | 'text'>('upload');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -28,166 +26,222 @@ const JobUpload: React.FC = () => {
       'application/pdf': ['.pdf'],
       'application/msword': ['.doc'],
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
-      'text/plain': ['.txt']
+      'text/plain': ['.txt'],
     },
-    maxFiles: 1
+    maxFiles: 1,
   });
 
   const handleImport = async () => {
     try {
       setProcessing(true);
       if (mode === 'upload') {
-        if (!selectedFile) {
-          toast.error('Please select a file to import');
-          return;
-        }
+        if (!selectedFile) { toast.error('Please select a file'); return; }
         const response = await jobService.uploadJD(selectedFile, company);
         setCurrentJob(response.job);
         toast.success('Job description uploaded successfully!');
       } else {
-        if (!jdText.trim()) {
-          toast.error('Please enter job description text');
-          return;
-        }
-        const response = await jobService.importText(jdText, { company: company || undefined, title: jobTitle || undefined, fileName: 'manual-input.txt' });
+        if (!jdText.trim()) { toast.error('Please enter job description text'); return; }
+        const response = await jobService.importText(jdText, {
+          company: company || undefined,
+          title: jobTitle || undefined,
+          fileName: 'manual-input.txt',
+        });
         setCurrentJob(response.job);
         toast.success('Job description imported successfully!');
       }
-    } catch (error) {
+    } catch {
       toast.error('Failed to import job description');
-      console.error(error);
     } finally {
       setProcessing(false);
     }
   };
 
-  return (
-    <div className="bg-white rounded-lg shadow-md p-6">
-      {!currentJob ? (
-        <>
-          <h2 className="text-xl font-semibold mb-4">Job Description</h2>
+  const handleNewJob = async () => {
+    // Delete all candidates for the current job from DB
+    if (currentJob?._id) {
+      try {
+        await candidateService.deleteByJob(currentJob._id);
+      } catch {
+        // Non-blocking — reset UI regardless
+      }
+    }
+    setCurrentJob(null);
+    setCandidates([]);
+    setUploadedResumes([]);
+    setSelectedFile(null);
+    setCompany('');
+    setJobTitle('');
+    setJdText('');
+  };
 
-          <div className="grid grid-cols-2 gap-2 mb-4">
-            <button
-              className={`px-4 py-2 rounded-md border ${mode === 'upload' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
-              onClick={() => setMode('upload')}
-              type="button"
-            >
-              Upload PDF
-            </button>
-            <button
-              className={`px-4 py-2 rounded-md border ${mode === 'text' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
-              onClick={() => setMode('text')}
-              type="button"
-            >
-              Write Text
-            </button>
+  const canImport = mode === 'upload' ? !!selectedFile : !!jdText.trim();
+
+  // ── After JD is uploaded: show job details ──────────────────────
+  if (currentJob) {
+    return (
+      <div>
+        {/* New Job button */}
+        <button
+          onClick={handleNewJob}
+          className="w-full mb-4 py-1.5 text-xs font-semibold rounded border text-center transition-colors"
+          style={{ borderColor: '#3B82F6', color: '#3B82F6', backgroundColor: 'white' }}
+        >
+          + New Job description
+        </button>
+
+        {/* Job description heading */}
+        <p className="text-sm font-semibold text-gray-800 mb-3">Job description</p>
+
+        {/* Company Name */}
+        <div className="mb-3">
+          <p className="text-xs font-semibold text-gray-700 mb-1">Company Name</p>
+          <div className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded bg-gray-50 text-gray-700">
+            {currentJob.company || '—'}
           </div>
-          
+        </div>
+
+        {/* Title */}
+        <div className="mb-3">
+          <p className="text-xs font-semibold text-gray-700 mb-1">Title</p>
+          <p className="text-xs text-gray-600">{currentJob.title || '—'}</p>
+        </div>
+
+        {/* Description preview */}
+        {currentJob.description && (
+          <div className="mb-3">
+            <p className="text-xs font-semibold text-gray-700 mb-1">Descriptions</p>
+            <p className="text-xs text-gray-500 leading-relaxed line-clamp-4">
+              {currentJob.description}
+            </p>
+          </div>
+        )}
+
+        {/* Job Requirements */}
+        {((currentJob.requirements?.skills?.length ?? 0) > 0 || (currentJob.requirements?.experience ?? 0) > 0) && (
           <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Company Name
-            </label>
-            <input
-              type="text"
-              value={company}
-              onChange={(e) => setCompany(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              placeholder="Enter company name"
-            />
+            <p className="text-xs font-semibold text-gray-700 mb-2">Job Requirements</p>
+
+            {/* Skills */}
+            {(currentJob.requirements?.skills?.length ?? 0) > 0 && (
+              <div className="flex flex-wrap gap-1 mb-2">
+                {(currentJob.requirements?.skills ?? []).slice(0, 10).map((skill, i) => (
+                  <span
+                    key={i}
+                    className="px-2 py-0.5 text-xs rounded border border-gray-300 text-gray-600 bg-white"
+                  >
+                    {skill}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Experience */}
+            {(currentJob.requirements?.experience ?? 0) > 0 && (
+              <p className="text-xs text-gray-500 mt-1">
+                Experience: {currentJob.requirements?.experience}+ years
+              </p>
+            )}
           </div>
+        )}
+      </div>
+    );
+  }
 
-          {mode === 'upload' ? (
-            <div
-              {...getRootProps()}
-              className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
-                ${isDragActive ? 'border-indigo-500 bg-indigo-50' : 'border-gray-300 hover:border-indigo-400'}`}
-            >
-              <input {...getInputProps()} />
-              <DocumentTextIcon className="mx-auto h-12 w-12 text-gray-400 mb-3" />
-              {isDragActive ? (
-                <p className="text-indigo-600">Drop the file here...</p>
-              ) : (
-                <>
-                  <p className="text-gray-600">
-                    Drag & drop a job description here, or click to select
-                  </p>
-                  <p className="text-sm text-gray-500 mt-2">
-                    Supports PDF, DOC, DOCX, TXT
-                  </p>
-                  {selectedFile && (
-                    <p className="text-sm text-gray-700 mt-3">Selected: <span className="font-medium">{selectedFile.name}</span></p>
-                  )}
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Job Title (optional)</label>
-                <input
-                  type="text"
-                  value={jobTitle}
-                  onChange={(e) => setJobTitle(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="e.g. Senior Frontend Engineer"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Job Description Text</label>
-                <textarea
-                  value={jdText}
-                  onChange={(e) => setJdText(e.target.value)}
-                  rows={6}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="Paste or write the job description here..."
-                />
-              </div>
-            </div>
-          )}
+  // ── Before JD uploaded: upload form ─────────────────────────────
+  return (
+    <div>
+      <p className="text-sm font-semibold text-gray-800 mb-2">Job description</p>
 
+      {/* Tabs — underline style */}
+      <div className="flex mb-3 border-b border-gray-200">
+        <button
+          type="button"
+          onClick={() => setMode('upload')}
+          className="flex-1 py-1.5 text-xs font-medium transition-colors"
+          style={mode === 'upload'
+            ? { color: '#3B82F6', borderBottom: '2px solid #3B82F6', marginBottom: '-1px', backgroundColor: 'transparent' }
+            : { color: '#6B7280', borderBottom: '2px solid transparent', marginBottom: '-1px', backgroundColor: 'transparent' }}
+        >
+          Upload PDF
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('text')}
+          className="flex-1 py-1.5 text-xs font-medium transition-colors"
+          style={mode === 'text'
+            ? { color: '#3B82F6', borderBottom: '2px solid #3B82F6', marginBottom: '-1px', backgroundColor: 'transparent' }
+            : { color: '#6B7280', borderBottom: '2px solid transparent', marginBottom: '-1px', backgroundColor: 'transparent' }}
+        >
+          Write Manually
+        </button>
+      </div>
+
+      {/* Company Name */}
+      <p className="text-xs font-semibold text-gray-800 mb-1">Company Name</p>
+      <input
+        type="text"
+        value={company}
+        onChange={e => setCompany(e.target.value)}
+        placeholder="Enter the company name here"
+        className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded mb-3 focus:outline-none focus:ring-1 focus:border-blue-400"
+      />
+
+      {mode === 'upload' ? (
+        <>
+          <div
+            {...getRootProps()}
+            className={`border border-dashed rounded p-4 text-center cursor-pointer mb-3 transition-colors ${
+              isDragActive ? 'bg-blue-50 border-blue-400' : 'border-gray-300 hover:border-blue-400 bg-gray-50'
+            }`}
+          >
+            <input {...getInputProps()} />
+            <svg className="mx-auto h-8 w-8 text-gray-400 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            {selectedFile ? (
+              <p className="text-xs text-gray-700 font-medium">{selectedFile.name}</p>
+            ) : (
+              <p className="text-xs text-gray-500 leading-tight">
+                Drag &amp;Drop a job description here ,or<br />click to select supports PDF, DOC, DOCX,<br />TXT
+              </p>
+            )}
+          </div>
           <button
             type="button"
             onClick={handleImport}
-            disabled={processing || (mode === 'upload' ? !selectedFile : !jdText.trim())}
-            className={`mt-4 w-full flex items-center justify-center px-4 py-2 rounded-md text-white font-medium shadow-sm
-              ${processing || (mode === 'upload' ? !selectedFile : !jdText.trim())
-                ? 'bg-gray-300 cursor-not-allowed'
-                : 'bg-indigo-600 hover:bg-indigo-700'}`}
+            disabled={processing || !canImport}
+            className="w-full py-2 text-xs font-semibold rounded text-white transition-colors"
+            style={{ backgroundColor: processing || !canImport ? '#9CA3AF' : '#3B82F6' }}
           >
-            {processing ? 'Importing...' : 'Import Job Description'}
+            {processing ? 'Importing...' : 'Import JD'}
           </button>
         </>
       ) : (
         <>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold">Job Description</h2>
-            <span className="text-sm text-gray-500">{currentJob.company}</span>
-          </div>
-          <div className="space-y-3">
-            <div>
-              <p className="text-sm font-medium text-gray-700">Title</p>
-              <p className="text-gray-900">{currentJob.title}</p>
-            </div>
-            <div>
-              <p className="text-sm font-medium text-gray-700">Description</p>
-              <div className="mt-1 max-h-32 overflow-y-auto p-3 bg-gray-50 border border-gray-200 rounded">
-                <p className="text-sm text-gray-700 whitespace-pre-line">{currentJob.description || 'No description available'}</p>
-              </div>
-            </div>
-            {currentJob.requirements?.skills?.length ? (
-              <div>
-                <p className="text-sm font-medium text-gray-700">Top Skills</p>
-                <div className="flex flex-wrap gap-1 mt-1">
-                  {currentJob.requirements.skills.slice(0, 8).map((skill, i) => (
-                    <span key={i} className="px-2 py-1 bg-indigo-100 text-indigo-700 text-xs rounded">
-                      {skill}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
+          <input
+            type="text"
+            value={jobTitle}
+            onChange={e => setJobTitle(e.target.value)}
+            placeholder="Job title (optional)"
+            className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded mb-2 focus:outline-none"
+          />
+          <textarea
+            value={jdText}
+            onChange={e => setJdText(e.target.value)}
+            rows={5}
+            placeholder="Paste or write the job description here..."
+            className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded mb-3 focus:outline-none resize-none"
+          />
+          <button
+            type="button"
+            onClick={handleImport}
+            disabled={processing || !canImport}
+            className="w-full py-2 text-xs font-semibold rounded text-white transition-colors"
+            style={{ backgroundColor: processing || !canImport ? '#9CA3AF' : '#3B82F6' }}
+          >
+            {processing ? 'Importing...' : 'Import JD'}
+          </button>
         </>
       )}
     </div>

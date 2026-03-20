@@ -1,86 +1,126 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Header from '../components/layout/Header';
 import JobUpload from '../components/upload/JobUpload';
-import ResumeUpload from '../components/upload/ResumeUpload';
 import CandidateList from '../components/candidates/CandidateList';
-import { useApp } from '../contexts/AppContext';
 import ResumesWidget from '../components/upload/ResumesWidget';
 import CheckFitButton from '../components/upload/CheckFitButton';
+import { useApp } from '../contexts/AppContext';
 
 const Dashboard: React.FC = () => {
-  const { currentJob, candidates } = useApp();
+  const { candidates } = useApp();
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [filter, setFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('score');
+
+  const shortlisted = candidates.filter(c => c.status === 'shortlisted').length;
+  const onHold      = candidates.filter(c => c.status === 'hold').length;
+  const avgScore    = candidates.length > 0
+    ? Math.round(candidates.reduce((sum, c) => sum + (c.score?.overall || 0), 0) / candidates.length)
+    : 0;
+
+  const tabs = [
+    { key: 'all',         label: 'All' },
+    { key: 'shortlisted', label: 'Shortlisted' },
+    { key: 'hold',        label: 'On Hold' },
+  ];
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="h-screen overflow-hidden flex flex-col" style={{ backgroundColor: '#F3F4F6' }}>
       <Header />
-      
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Left Sidebar - Upload Section (unchanged) */}
-          <div className="lg:col-span-1 space-y-6">
-            <JobUpload />
-            <ResumeUpload />
-            
-            {currentJob && (
-              <div className="bg-white rounded-lg shadow-md p-6">
-                <h3 className="text-lg font-semibold mb-3">Job Requirements</h3>
-                <div className="space-y-3">
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">Required Skills:</p>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      {currentJob.requirements?.skills?.map((skill, index) => (
-                        <span key={index} className="px-2 py-1 bg-indigo-100 text-indigo-700 text-xs rounded">
-                          {skill}
-                        </span>
-                      )) || <span className="text-sm text-gray-500">No skills specified</span>}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-700">Experience:</p>
-                    <p className="text-sm text-gray-600">{currentJob.requirements?.experience || 0}+ years</p>
-                  </div>
-                </div>
+
+      <div className="flex flex-1 overflow-hidden min-h-0">
+        {/* ── Left sidebar ── */}
+        {sidebarOpen && (
+          <aside className="w-56 bg-white border-r border-gray-200 flex-shrink-0 flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto px-3 py-4">
+              <JobUpload />
+            </div>
+          </aside>
+        )}
+
+        {/* ── Center panel ── */}
+        <main className="flex-1 flex flex-col overflow-hidden min-h-0 bg-white">
+
+          {/* Toolbar row */}
+          <div className="flex items-center px-4 py-2 bg-white border-b border-gray-200 gap-3 flex-shrink-0">
+
+            {/* Hamburger */}
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="text-gray-500 hover:text-gray-700 flex-shrink-0"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+
+            {/* Filter tabs */}
+            <div className="flex items-center gap-1">
+              {tabs.map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setFilter(tab.key)}
+                  className="px-3 py-1 text-xs font-medium rounded transition-colors"
+                  style={
+                    filter === tab.key
+                      ? { backgroundColor: '#3B82F6', color: '#fff' }
+                      : { backgroundColor: '#F3F4F6', color: '#374151' }
+                  }
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex-1" />
+
+            {/* Stats */}
+            <div className="flex items-center gap-5">
+              <div className="flex flex-col items-center">
+                <span className="text-sm font-bold leading-none" style={{ color: '#F97316' }}>{candidates.length}</span>
+                <span className="text-xs text-gray-400 mt-0.5">Total</span>
               </div>
-            )}
+              <div className="flex flex-col items-center">
+                <span className="text-sm font-bold leading-none" style={{ color: '#F97316' }}>{shortlisted}</span>
+                <span className="text-xs text-gray-400 mt-0.5">Shortlisted</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <span className="text-sm font-bold leading-none" style={{ color: '#F97316' }}>{onHold}</span>
+                <span className="text-xs text-gray-400 mt-0.5">On Hold</span>
+              </div>
+              <div className="flex flex-col items-center">
+                <span className="text-sm font-bold leading-none" style={{ color: '#F97316' }}>{avgScore}</span>
+                <span className="text-xs text-gray-400 mt-0.5">Average Score</span>
+              </div>
+            </div>
+
+            {/* Sort */}
+            <select
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value)}
+              className="text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none"
+            >
+              <option value="score">Sort by</option>
+              <option value="score">Score</option>
+              <option value="name">Name</option>
+            </select>
           </div>
 
-          {/* Main Content Area (2 columns) */}
-          <div className="lg:col-span-2">
-            {candidates.length > 0 ? (
-              <CandidateList />
-            ) : (
-              <div className="bg-white rounded-lg shadow-md p-12 text-center">
-                <div className="max-w-md mx-auto">
-                  <svg
-                    className="mx-auto h-24 w-24 text-gray-400 mb-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={1}
-                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                    />
-                  </svg>
-                  <h3 className="text-xl font-medium text-gray-900 mb-2">No Resumes Uploaded</h3>
-                  <p className="text-gray-600">
-                    {currentJob 
-                      ? "Upload resumes to start analyzing candidates"
-                      : "Start by uploading a job description"}
-                  </p>
-                </div>
-              </div>
-            )}
+          {/* Candidate list content */}
+          <div className="flex-1 overflow-y-auto p-4">
+            <CandidateList filter={filter} sortBy={sortBy} />
           </div>
+        </main>
 
-          {/* Right Sidebar - Resumes list and Check Fit */}
-          <div className="lg:col-span-1 space-y-4">
+        {/* ── Right panel ── */}
+        <aside className="w-64 bg-white border-l border-gray-200 flex-shrink-0 flex flex-col overflow-hidden min-h-0">
+          <div className="flex-1 overflow-y-auto p-3">
             <ResumesWidget />
+          </div>
+          <div className="p-3 border-t border-gray-100">
             <CheckFitButton />
           </div>
-        </div>
+        </aside>
       </div>
     </div>
   );
