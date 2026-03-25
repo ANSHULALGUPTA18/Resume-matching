@@ -13,7 +13,6 @@ dotenv.config({ override: true });
 import jobRoutes from './routes/jobRoutes';
 import candidateRoutes from './routes/candidateRoutes';
 import scoringRoutes from './routes/scoringRoutes';
-import interviewPrepRoutes from './routes/interviewPrepRoutes';
 
 const app: Application = express();
 
@@ -57,13 +56,15 @@ uploadDirs.forEach(dir => {
   }
 });
 
+// Serve uploaded files (resumes, JDs) as static assets
+app.use('/uploads', express.static(uploadsBase));
+
 // Routes
 app.use('/api/jobs', jobRoutes);
 app.use('/api/candidates', candidateRoutes);
 app.use('/api/scoring', scoringRoutes);
-app.use('/api/interview-prep', interviewPrepRoutes);
 
-console.log('Routes registered: /api/jobs, /api/candidates, /api/scoring, /api/interview-prep');
+console.log('Routes registered: /api/jobs, /api/candidates, /api/scoring');
 
 // Serve React frontend in production
 if (process.env.NODE_ENV === 'production') {

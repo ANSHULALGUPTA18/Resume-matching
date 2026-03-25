@@ -6,7 +6,7 @@ import { useApp } from '../../contexts/AppContext';
 import toast from 'react-hot-toast';
 
 const JobUpload: React.FC = () => {
-  const { currentJob, setCurrentJob, setCandidates, setUploadedResumes } = useApp();
+  const { currentJob, setCurrentJob, setCandidates } = useApp();
   const [company, setCompany] = useState('');
   const [mode, setMode] = useState<'upload' | 'text'>('upload');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -67,7 +67,6 @@ const JobUpload: React.FC = () => {
     }
     setCurrentJob(null);
     setCandidates([]);
-    setUploadedResumes([]);
     setSelectedFile(null);
     setCompany('');
     setJobTitle('');

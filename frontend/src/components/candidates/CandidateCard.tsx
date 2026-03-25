@@ -30,11 +30,19 @@ function initials(name: string): string {
   return name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() || 'NA';
 }
 
+const BACKEND_URL = process.env.REACT_APP_API_URL
+  ? process.env.REACT_APP_API_URL.replace('/api', '')
+  : 'http://localhost:5000';
+
 const CandidateCard: React.FC<Props> = ({ candidate, onStatusChange }) => {
   const score = candidate.score?.overall || 0;
   const name  = candidate.personalInfo?.name || 'Unknown';
   const email = candidate.personalInfo?.email || '';
   const yoe   = candidate.extractedData?.yearsOfExperience;
+
+  const resumeUrl = candidate.resumePath
+    ? `${BACKEND_URL}/uploads/resumes/${candidate.resumePath.split(/[\\/]/).pop()}`
+    : null;
 
   const scoreColor = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#ef4444';
 
@@ -103,6 +111,21 @@ const CandidateCard: React.FC<Props> = ({ candidate, onStatusChange }) => {
 
           {/* Action buttons */}
           <div className="flex items-center gap-2 flex-wrap">
+            {resumeUrl && (
+              <a
+                href={resumeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-1 text-xs font-semibold rounded border transition-colors flex items-center gap-1"
+                style={{ borderColor: '#6B7280', color: '#374151', backgroundColor: 'transparent' }}
+              >
+                <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+                View
+              </a>
+            )}
             {candidate.status !== 'shortlisted' && (
               <button
                 onClick={() => onStatusChange(candidate._id, 'shortlisted')}

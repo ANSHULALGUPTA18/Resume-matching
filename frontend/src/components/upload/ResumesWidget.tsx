@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { TrashIcon } from '@heroicons/react/24/outline';
 import { useApp, UploadedResume } from '../../contexts/AppContext';
@@ -7,11 +7,40 @@ import toast from 'react-hot-toast';
 const ResumesWidget: React.FC = () => {
   const { currentJob, uploadedResumes, setUploadedResumes, addUploadedResumes } = useApp();
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  // ── Selection helpers ──────────────────────────────────────────
+  const allSelected = uploadedResumes.length > 0 && selectedIds.size === uploadedResumes.length;
+  const someSelected = selectedIds.size > 0 && !allSelected;
+
+  const toggleOne = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(uploadedResumes.map(r => r.id)));
+    }
+  };
 
   const removeResume = (resumeId: string) => {
     setUploadedResumes(uploadedResumes.filter(r => r.id !== resumeId));
+    setSelectedIds(prev => { const next = new Set(prev); next.delete(resumeId); return next; });
   };
 
+  const deleteSelected = () => {
+    setUploadedResumes(uploadedResumes.filter(r => !selectedIds.has(r.id)));
+    setSelectedIds(new Set());
+    toast.success(`${selectedIds.size} resume(s) removed`);
+  };
+
+  // ── Drop zone ──────────────────────────────────────────────────
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (!currentJob) {
       toast.error('Please upload a job description first');
@@ -54,8 +83,8 @@ const ResumesWidget: React.FC = () => {
   return (
     <div className="flex flex-col gap-3 h-full">
 
-      {/* ── Resumes header ── */}
-      <div className="flex items-center justify-between">
+      {/* ── Header row ── */}
+      <div className="flex items-center justify-between flex-shrink-0">
         <p className="text-sm font-semibold text-gray-800">
           Resumes({uploadedResumes.length})
         </p>
@@ -70,14 +99,12 @@ const ResumesWidget: React.FC = () => {
           className="flex items-center gap-1 px-3 py-1 text-xs font-semibold text-white rounded transition-colors"
           style={{ backgroundColor: '#3B82F6' }}
         >
-          {/* Upload icon */}
           <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
           </svg>
           Upload
         </button>
-        {/* Hidden input for Upload button */}
         <input
           ref={uploadInputRef}
           type="file"
@@ -92,6 +119,34 @@ const ResumesWidget: React.FC = () => {
           }}
         />
       </div>
+
+      {/* ── Select All + Delete Selected toolbar (only when resumes exist) ── */}
+      {uploadedResumes.length > 0 && (
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <label className="flex items-center gap-1.5 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              ref={el => { if (el) el.indeterminate = someSelected; }}
+              onChange={toggleAll}
+              className="w-3.5 h-3.5 rounded accent-blue-500 cursor-pointer"
+            />
+            <span className="text-xs text-gray-600">
+              {selectedIds.size > 0 ? `${selectedIds.size} selected` : 'Select All'}
+            </span>
+          </label>
+
+          {selectedIds.size > 0 && (
+            <button
+              onClick={deleteSelected}
+              className="ml-auto flex items-center gap-1 px-2 py-0.5 text-xs font-medium text-red-600 border border-red-300 rounded hover:bg-red-50 transition-colors"
+            >
+              <TrashIcon className="h-3 w-3" />
+              Delete ({selectedIds.size})
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── Drop zone / resume list ── */}
       {uploadedResumes.length === 0 ? (
@@ -120,31 +175,44 @@ const ResumesWidget: React.FC = () => {
       ) : (
         <div
           {...getRootProps()}
-          className={`flex-1 border border-dashed rounded-lg overflow-hidden transition-colors ${
+          className={`flex-1 min-h-0 flex flex-col border border-dashed rounded-lg overflow-hidden transition-colors ${
             isDragActive ? 'bg-blue-50 border-blue-400' : 'border-gray-200 hover:border-blue-300'
           }`}
           onClick={e => e.stopPropagation()}
         >
           <input {...getInputProps()} />
-          <div className="space-y-1 max-h-72 overflow-y-auto p-2">
+          <div className="flex-1 overflow-y-auto space-y-1 p-2">
             {uploadedResumes.map(resume => (
               <div
                 key={resume.id}
-                className="flex items-center gap-2 py-1.5 px-2 hover:bg-gray-50 rounded group"
+                className={`flex items-center gap-2 py-1.5 px-2 rounded group transition-colors ${
+                  selectedIds.has(resume.id) ? 'bg-blue-50' : 'hover:bg-gray-50'
+                }`}
               >
+                {/* Checkbox */}
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(resume.id)}
+                  onChange={() => toggleOne(resume.id)}
+                  onClick={e => e.stopPropagation()}
+                  className="w-3.5 h-3.5 rounded accent-blue-500 flex-shrink-0 cursor-pointer"
+                />
+
                 <svg className="h-6 w-6 flex-shrink-0 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                     d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
+
                 <div className="flex-1 min-w-0">
                   <p className="text-xs text-gray-800 truncate font-medium">{resume.fileName}</p>
                   <p className="text-xs text-gray-400">
                     {formatSize(resume.file.size)}&nbsp;&nbsp;{formatDate(resume.uploadedAt)}
                   </p>
                 </div>
+
                 <button
                   onClick={e => { e.stopPropagation(); removeResume(resume.id); }}
-                  className="text-gray-300 hover:text-red-500 flex-shrink-0"
+                  className="text-gray-300 hover:text-red-500 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
                 >
                   <TrashIcon className="h-3.5 w-3.5" />
                 </button>
@@ -152,7 +220,9 @@ const ResumesWidget: React.FC = () => {
             ))}
           </div>
           {isDragActive && (
-            <div className="text-center py-2 text-xs text-blue-500 font-medium">Drop to add more resumes</div>
+            <div className="text-center py-2 text-xs text-blue-500 font-medium flex-shrink-0">
+              Drop to add more resumes
+            </div>
           )}
         </div>
       )}

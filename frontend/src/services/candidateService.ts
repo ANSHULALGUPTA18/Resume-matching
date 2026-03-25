@@ -31,6 +31,7 @@ export interface Candidate {
   semanticScore?: number;
   extractedData?: ExtractedData;
   fileName: string;
+  resumePath?: string;
   createdAt: string;
 }
 
