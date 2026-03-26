@@ -18,6 +18,10 @@ export interface ScoreBreakdown {
   finalScore: number;
   experiencePenalty?: number;
   educationPenalty?: number;
+  matchedRequired?: string[];
+  missingRequired?: string[];
+  matchedPreferred?: string[];
+  missingPreferred?: string[];
 }
 
 export interface LlmFeedback {
@@ -52,6 +56,7 @@ export interface ICandidate {
   sectionEmbeddings?: SectionEmbeddings;
   scoreBreakdown?: ScoreBreakdown;
   llmFeedback?: LlmFeedback;
+  resumeHash?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -66,6 +71,7 @@ type CandidateUpdate = {
   sectionEmbeddings?: SectionEmbeddings | null;
   scoreBreakdown?: ScoreBreakdown | null;
   llmFeedback?: LlmFeedback | null;
+  resumeHash?: string;
 };
 
 function rowToCandidate(row: any, includeEmbedding = false): ICandidate {
@@ -87,6 +93,7 @@ function rowToCandidate(row: any, includeEmbedding = false): ICandidate {
     sectionEmbeddings: includeEmbedding ? (row.section_embeddings ?? undefined) : undefined,
     scoreBreakdown: row.score_breakdown ?? undefined,
     llmFeedback: row.llm_feedback ?? undefined,
+    resumeHash: row.resume_hash ?? undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -100,8 +107,9 @@ export async function create(data: Omit<ICandidate, '_id' | 'createdAt' | 'updat
     `INSERT INTO candidates
        (id, job_id, personal_info, experience, education, skills, certifications,
         score, improvements, status, resume_path, raw_text, file_name,
-        embedding, semantic_score, extracted_data, section_embeddings, score_breakdown, llm_feedback)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+        embedding, semantic_score, extracted_data, section_embeddings, score_breakdown, llm_feedback,
+        resume_hash)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
      RETURNING *`,
     [
       id, data.jobId,
@@ -120,6 +128,7 @@ export async function create(data: Omit<ICandidate, '_id' | 'createdAt' | 'updat
       data.sectionEmbeddings ? JSON.stringify(data.sectionEmbeddings) : null,
       data.scoreBreakdown ? JSON.stringify(data.scoreBreakdown) : null,
       data.llmFeedback ? JSON.stringify(data.llmFeedback) : null,
+      data.resumeHash ?? null,
     ]
   );
   return rowToCandidate(result.rows[0]);
@@ -165,6 +174,10 @@ export async function update(id: string, data: CandidateUpdate): Promise<ICandid
     fields.push(`semantic_score = $${idx++}`);
     values.push(data.semanticScore ?? null);
   }
+  if ('resumeHash' in data) {
+    fields.push(`resume_hash = $${idx++}`);
+    values.push(data.resumeHash ?? null);
+  }
   if ('status' in data) {
     fields.push(`status = $${idx++}`);
     values.push(data.status);
@@ -191,5 +204,14 @@ export async function deleteByJobId(jobId: string): Promise<number> {
   return result.rowCount ?? 0;
 }
 
-const Candidate = { create, findById, findByJobId, update, findByIdAndUpdate, deleteByJobId };
+export async function findByHashAndJob(hash: string, jobId: string): Promise<ICandidate | null> {
+  const result = await pool.query(
+    'SELECT * FROM candidates WHERE resume_hash = $1 AND job_id = $2 LIMIT 1',
+    [hash, jobId]
+  );
+  if (!result.rows[0]) return null;
+  return rowToCandidate(result.rows[0]);
+}
+
+const Candidate = { create, findById, findByJobId, update, findByIdAndUpdate, deleteByJobId, findByHashAndJob };
 export default Candidate;

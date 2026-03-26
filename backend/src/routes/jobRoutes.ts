@@ -49,6 +49,11 @@ router.post('/upload', async (req, res) => {
 
     // Parse job description
     const parsedJob = parserService.parseJobDescription(text);
+    const skillSplit = parserService.parseRequiredPreferredSkills(
+      text, parsedJob.requirements.skills
+    );
+    (parsedJob.requirements as any).requiredSkills = skillSplit.required;
+    (parsedJob.requirements as any).preferredSkills = skillSplit.preferred;
 
     const companyName = (req.body && req.body.company && req.body.company.trim())
       ? req.body.company.trim()
@@ -107,6 +112,11 @@ router.post('/import-text', async (req, res) => {
     }
 
     const parsedJob = parserService.parseJobDescription(text);
+    const skillSplit = parserService.parseRequiredPreferredSkills(
+      text, parsedJob.requirements.skills
+    );
+    (parsedJob.requirements as any).requiredSkills = skillSplit.required;
+    (parsedJob.requirements as any).preferredSkills = skillSplit.preferred;
     const companyName: string = (body.company && typeof body.company === 'string' && body.company.trim())
       ? body.company.trim()
       : (parsedJob.company && parsedJob.company !== 'Company' ? parsedJob.company : 'Company');

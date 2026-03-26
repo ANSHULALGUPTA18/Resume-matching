@@ -56,6 +56,7 @@ export const initDB = async (): Promise<void> => {
     `ALTER TABLE candidates ADD COLUMN IF NOT EXISTS section_embeddings JSONB DEFAULT NULL`,
     `ALTER TABLE candidates ADD COLUMN IF NOT EXISTS score_breakdown JSONB DEFAULT NULL`,
     `ALTER TABLE candidates ADD COLUMN IF NOT EXISTS llm_feedback JSONB DEFAULT NULL`,
+    `ALTER TABLE candidates ADD COLUMN IF NOT EXISTS resume_hash TEXT`,
   ];
 
   for (const sql of alterStatements) {

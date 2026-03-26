@@ -307,13 +307,43 @@ export function extractCandidateData(candidateData: any): ExtractedData {
 
 // ── Phase 2: Keyword skill match ───────────────────────────────────────────────
 
-function calculateSkillMatch(candidateSkills: string[], requiredSkills: string[], rawText: string): number {
-  if (!requiredSkills.length) return 0;
-  let matched = 0;
+interface SkillMatchResult {
+  score: number;
+  matchedRequired: string[];
+  missingRequired: string[];
+  matchedPreferred: string[];
+  missingPreferred: string[];
+}
+
+function calculateSkillMatchDetailed(
+  candidateSkills: string[],
+  requiredSkills: string[],
+  preferredSkills: string[],
+  rawText: string
+): SkillMatchResult {
+  const matchedRequired: string[] = [];
+  const missingRequired: string[] = [];
+  const matchedPreferred: string[] = [];
+  const missingPreferred: string[] = [];
+
   for (const req of requiredSkills) {
-    if (candidateHasSkill(req, candidateSkills, rawText)) matched++;
+    (candidateHasSkill(req, candidateSkills, rawText) ? matchedRequired : missingRequired).push(req);
   }
-  return Math.min(100, Math.round((matched / requiredSkills.length) * 100));
+  for (const pref of preferredSkills) {
+    (candidateHasSkill(pref, candidateSkills, rawText) ? matchedPreferred : missingPreferred).push(pref);
+  }
+
+  if (requiredSkills.length === 0 && preferredSkills.length === 0) {
+    return { score: 0, matchedRequired, missingRequired, matchedPreferred, missingPreferred };
+  }
+
+  const reqScore  = requiredSkills.length  > 0 ? (matchedRequired.length  / requiredSkills.length)  * 100 : 100;
+  const prefScore = preferredSkills.length > 0 ? (matchedPreferred.length / preferredSkills.length) * 100 : 50;
+  const score = preferredSkills.length > 0
+    ? Math.round(reqScore * 0.70 + prefScore * 0.30)
+    : Math.round(reqScore);
+
+  return { score: Math.min(100, score), matchedRequired, missingRequired, matchedPreferred, missingPreferred };
 }
 
 function calculateExperienceMatch(extractedData: ExtractedData, requiredExp: number): number {
@@ -381,7 +411,8 @@ class ScoringService {
   calculateScore(candidateData: any, jobData: IJob): ScoringResult {
     const candidateSkills: string[] = candidateData.skills || [];
     const rawText: string = candidateData.rawText || '';
-    const requiredSkills: string[] = jobData.requirements?.skills || [];
+    const requiredSkills: string[]  = (jobData.requirements as any)?.requiredSkills ?? jobData.requirements?.skills ?? [];
+    const preferredSkills: string[] = (jobData.requirements as any)?.preferredSkills ?? [];
     const requiredExp: number = jobData.requirements?.experience ?? 0;
     const requiredEdu: string[] = jobData.requirements?.education || [];
     const jobKeywords: string[] = jobData.keywords || [];
@@ -389,7 +420,8 @@ class ScoringService {
     const extractedData = extractCandidateData(candidateData);
     const hardFilter = applyHardFilters(extractedData, jobData);
 
-    const skillMatch      = calculateSkillMatch(candidateSkills, requiredSkills, rawText);
+    const skillMatchResult = calculateSkillMatchDetailed(candidateSkills, requiredSkills, preferredSkills, rawText);
+    const skillMatch = skillMatchResult.score;
     const experienceMatch = calculateExperienceMatch(extractedData, requiredExp);
     const educationMatch  = calculateEducationMatch(extractedData, requiredEdu, rawText);
     const keywordMatch    = calculateKeywordMatch(rawText, jobKeywords);
@@ -413,13 +445,17 @@ class ScoringService {
       finalScore:            overall,
       experiencePenalty:     hardFilter.experiencePenalty,
       educationPenalty:      hardFilter.educationPenalty,
+      matchedRequired:       skillMatchResult.matchedRequired,
+      missingRequired:       skillMatchResult.missingRequired,
+      matchedPreferred:      skillMatchResult.matchedPreferred,
+      missingPreferred:      skillMatchResult.missingPreferred,
     };
 
     return {
       score: { overall, skillMatch, experienceMatch, educationMatch, keywordMatch },
       improvements: this.generateImprovements(
         { skillMatch, experienceMatch, educationMatch, keywordMatch },
-        candidateData, jobData, hardFilter
+        candidateData, jobData, hardFilter, skillMatchResult.missingRequired
       ),
       strengths: this.identifyStrengths(
         { skillMatch, experienceMatch, educationMatch, keywordMatch }
@@ -473,7 +509,7 @@ class ScoringService {
   }
 
   private generateImprovements(
-    scores: any, candidateData: any, jobData: IJob, hardFilter: HardFilterResult
+    scores: any, candidateData: any, jobData: IJob, hardFilter: HardFilterResult, missingRequired?: string[]
   ): string[] {
     const improvements: string[] = [];
     const candidateSkills: string[] = candidateData.skills || [];
@@ -485,7 +521,7 @@ class ScoringService {
     }
 
     if (scores.skillMatch < 80 && requiredSkills.length > 0) {
-      const missing = requiredSkills.filter(s => !candidateHasSkill(s, candidateSkills, rawText));
+      const missing = missingRequired ?? requiredSkills.filter(s => !candidateHasSkill(s, candidateSkills, rawText));
       if (missing.length > 0) {
         improvements.push(`Missing key skills: ${missing.slice(0, 5).join(', ')}`);
       }

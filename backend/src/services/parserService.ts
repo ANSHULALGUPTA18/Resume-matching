@@ -1,6 +1,7 @@
 import mammoth from 'mammoth';
 import fs from 'fs';
 import path from 'path';
+import { createHash } from 'crypto';
 
 interface ParsedResume {
   personalInfo: {
@@ -683,6 +684,57 @@ class ParserService {
     }
 
     return 'Unknown';
+  }
+
+  /**
+   * Parse JD text to categorise extracted skills as required vs preferred.
+   * Looks for section headers like "Required Skills", "Must Have", "Preferred", "Nice to Have".
+   * Skills not found in any section default to required.
+   */
+  parseRequiredPreferredSkills(jdText: string, allSkills: string[]): { required: string[]; preferred: string[] } {
+    type Section = 'required' | 'preferred';
+    let currentSection: Section = 'required';
+    const REQUIRED_MARKER = /^(required|must.?have|minimum qualif|mandatory|essential|technical requirements?|hard requirements?|core requirements?)/i;
+    const PREFERRED_MARKER = /^(preferred|nice.?to.?have|bonus|desired|good to have|additional|optional|advantageous|plus|would be)/i;
+    const skillMap = new Map<string, Section>();
+
+    for (const line of jdText.split('\n')) {
+      const t = line.trim();
+      if (!t) continue;
+      if (t.length < 100) {
+        if (REQUIRED_MARKER.test(t)) { currentSection = 'required'; continue; }
+        if (PREFERRED_MARKER.test(t)) { currentSection = 'preferred'; continue; }
+      }
+      for (const skill of allSkills) {
+        const sl = skill.toLowerCase();
+        const re = sl.length <= 3
+          ? new RegExp(`(?<![a-zA-Z0-9])${escapeRegex(sl)}(?![a-zA-Z0-9])`, 'i')
+          : new RegExp(escapeRegex(sl), 'i');
+        if (re.test(t)) {
+          if (!skillMap.has(skill) || currentSection === 'required') {
+            skillMap.set(skill, currentSection);
+          }
+        }
+      }
+    }
+
+    const required: string[] = [];
+    const preferred: string[] = [];
+    for (const skill of allSkills) {
+      (skillMap.get(skill) === 'preferred' ? preferred : required).push(skill);
+    }
+    return { required, preferred };
+  }
+
+  /**
+   * Compute a 32-char SHA-256 hex hash of resume text for duplicate detection.
+   * Normalises whitespace so minor formatting differences don't cause false misses.
+   */
+  computeTextHash(text: string): string {
+    return createHash('sha256')
+      .update(text.trim().replace(/\s+/g, ' '))
+      .digest('hex')
+      .slice(0, 32);
   }
 }
 

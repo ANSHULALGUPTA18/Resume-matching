@@ -9,6 +9,27 @@ export interface ExtractedData {
   jobTitles: string[];
 }
 
+export interface ScoreBreakdown {
+  hardFilterPassed: boolean;
+  hardFilterReason?: string;
+  skillMatchScore: number;
+  sectionSemanticScore: number | null;
+  llmScore: number | null;
+  finalScore: number;
+  experiencePenalty?: number;
+  educationPenalty?: number;
+  matchedRequired?: string[];
+  missingRequired?: string[];
+  matchedPreferred?: string[];
+  missingPreferred?: string[];
+}
+
+export interface LlmFeedback {
+  keyStrengths: string[];
+  keyGaps: string[];
+  overallRecommendation: number;
+}
+
 export interface Candidate {
   _id: string;
   jobId: string;
@@ -32,10 +53,22 @@ export interface Candidate {
   extractedData?: ExtractedData;
   fileName: string;
   resumePath?: string;
+  scoreBreakdown?: ScoreBreakdown;
+  llmFeedback?: LlmFeedback;
+  isDuplicate?: boolean;
   createdAt: string;
 }
 
 export const candidateService = {
+  uploadResume: async (jobId: string, file: File) => {
+    const formData = new FormData();
+    formData.append('resumes', file);
+    const response = await axios.post(`${API_BASE_URL}/candidates/upload/${jobId}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data;
+  },
+
   uploadResumes: async (jobId: string, files: File[]) => {
     const formData = new FormData();
     files.forEach(file => {

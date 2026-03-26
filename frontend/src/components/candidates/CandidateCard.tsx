@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { CircularProgressbar, buildStyles } from 'react-circular-progressbar';
 import 'react-circular-progressbar/dist/styles.css';
-import { Candidate } from '../../services/candidateService';
+import { Candidate, ScoreBreakdown, LlmFeedback } from '../../services/candidateService';
 
 interface Props {
   candidate: Candidate;
@@ -35,6 +35,9 @@ const BACKEND_URL = process.env.REACT_APP_API_URL
   : 'http://localhost:5000';
 
 const CandidateCard: React.FC<Props> = ({ candidate, onStatusChange }) => {
+  const [expanded, setExpanded] = useState(false);
+  const sb   = candidate.scoreBreakdown;
+  const llmf = candidate.llmFeedback;
   const score = candidate.score?.overall || 0;
   const name  = candidate.personalInfo?.name || 'Unknown';
   const email = candidate.personalInfo?.email || '';
@@ -154,6 +157,22 @@ const CandidateCard: React.FC<Props> = ({ candidate, onStatusChange }) => {
               </button>
             )}
           </div>
+
+          {/* Expand toggle */}
+          {sb && (
+            <button
+              onClick={() => setExpanded(e => !e)}
+              className="mt-2 flex items-center gap-1 text-xs text-blue-500 hover:text-blue-700 transition-colors"
+            >
+              <svg
+                className={`h-3 w-3 transition-transform ${expanded ? 'rotate-180' : ''}`}
+                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+              {expanded ? 'Hide details' : 'Score details'}
+            </button>
+          )}
         </div>
 
         {/* Right: score circle + status badge */}
@@ -178,6 +197,104 @@ const CandidateCard: React.FC<Props> = ({ candidate, onStatusChange }) => {
           </span>
         </div>
       </div>
+
+      {/* Expanded score breakdown panel */}
+      {expanded && sb && (
+        <div className="mt-3 pt-3 border-t border-gray-100 space-y-3 text-xs">
+
+          {/* Phase scores grid */}
+          <div>
+            <p className="font-semibold text-gray-700 mb-1.5">Score Breakdown</p>
+            <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+              {[
+                { label: 'Keyword',  value: sb.skillMatchScore },
+                { label: 'Semantic', value: sb.sectionSemanticScore },
+                { label: 'LLM',      value: sb.llmScore },
+                { label: 'Final',    value: sb.finalScore },
+              ].map(({ label, value }) => (
+                <div key={label} className="bg-gray-50 rounded px-2 py-1.5 text-center">
+                  <div className="font-bold text-gray-800 text-sm">
+                    {value != null ? value : '—'}
+                  </div>
+                  <div className="text-gray-500">{label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Required skills */}
+          {((sb.matchedRequired?.length ?? 0) + (sb.missingRequired?.length ?? 0)) > 0 && (
+            <div>
+              <p className="font-semibold text-gray-700 mb-1">
+                Required Skills&nbsp;
+                <span className="font-normal text-gray-400">
+                  ({sb.matchedRequired?.length ?? 0}/{(sb.matchedRequired?.length ?? 0) + (sb.missingRequired?.length ?? 0)} matched)
+                </span>
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {sb.matchedRequired?.map(s => (
+                  <span key={s} className="px-1.5 py-0.5 rounded text-xs bg-green-50 text-green-700 border border-green-200">
+                    ✓ {s}
+                  </span>
+                ))}
+                {sb.missingRequired?.map(s => (
+                  <span key={s} className="px-1.5 py-0.5 rounded text-xs bg-red-50 text-red-600 border border-red-200">
+                    ✗ {s}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Preferred skills */}
+          {((sb.matchedPreferred?.length ?? 0) + (sb.missingPreferred?.length ?? 0)) > 0 && (
+            <div>
+              <p className="font-semibold text-gray-700 mb-1">
+                Preferred Skills&nbsp;
+                <span className="font-normal text-gray-400">
+                  ({sb.matchedPreferred?.length ?? 0}/{(sb.matchedPreferred?.length ?? 0) + (sb.missingPreferred?.length ?? 0)} matched)
+                </span>
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {sb.matchedPreferred?.map(s => (
+                  <span key={s} className="px-1.5 py-0.5 rounded text-xs bg-blue-50 text-blue-600 border border-blue-200">
+                    ✓ {s}
+                  </span>
+                ))}
+                {sb.missingPreferred?.map(s => (
+                  <span key={s} className="px-1.5 py-0.5 rounded text-xs bg-yellow-50 text-yellow-700 border border-yellow-200">
+                    ⚠ {s}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* LLM insights */}
+          {llmf && (llmf.keyStrengths?.length > 0 || llmf.keyGaps?.length > 0) && (
+            <div>
+              <p className="font-semibold text-gray-700 mb-1">LLM Insights</p>
+              {llmf.keyStrengths?.slice(0, 2).map((s, i) => (
+                <p key={i} className="text-green-700 flex items-start gap-1">
+                  <span className="flex-shrink-0">💪</span>{s}
+                </p>
+              ))}
+              {llmf.keyGaps?.slice(0, 2).map((g, i) => (
+                <p key={i} className="text-orange-600 flex items-start gap-1 mt-0.5">
+                  <span className="flex-shrink-0">⚠</span>{g}
+                </p>
+              ))}
+            </div>
+          )}
+
+          {/* Hard filter warning */}
+          {sb.hardFilterReason && (
+            <p className="text-red-500 bg-red-50 rounded px-2 py-1">
+              ⚠ {sb.hardFilterReason}
+            </p>
+          )}
+        </div>
+      )}
     </div>
   );
 };

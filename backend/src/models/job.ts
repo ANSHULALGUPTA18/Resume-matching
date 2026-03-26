@@ -15,6 +15,8 @@ export interface IJob {
   description: string;
   requirements: {
     skills: string[];
+    requiredSkills?: string[];
+    preferredSkills?: string[];
     experience: number;
     education: string[];
     certifications: string[];

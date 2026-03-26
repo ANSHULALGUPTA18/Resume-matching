@@ -138,6 +138,15 @@ router.post('/upload/:jobId', async (req, res) => {
       const parsedResume = parserService.parseResume(text, resumeFile.name);
       console.log('Resume parsed:', parsedResume.personalInfo.name, '| skills:', parsedResume.skills.length);
 
+      // Duplicate detection — skip if same resume content already processed for this job
+      const resumeHash = parserService.computeTextHash(text);
+      const duplicate = await Candidate.findByHashAndJob(resumeHash, jobId);
+      if (duplicate) {
+        console.log(`Duplicate resume detected: ${resumeFile.name} — skipping`);
+        results.push({ ...duplicate, isDuplicate: true } as any);
+        continue;
+      }
+
       // Phase 1+2: keyword scoring + hard filters
       const scoringResult = scoringService.calculateScore(parsedResume, job);
       console.log('Keyword score:', scoringResult.score.overall);
@@ -162,6 +171,7 @@ router.post('/upload/:jobId', async (req, res) => {
         extractedData: scoringResult.extractedData,
         scoreBreakdown: scoringResult.scoreBreakdown,
         rawText: text,
+        resumeHash,
       });
 
       console.log('Candidate saved:', candidate._id);
