@@ -97,4 +97,5 @@ export const candidateService = {
     const response = await axios.delete(`${API_BASE_URL}/candidates/job/${jobId}`);
     return response.data;
   },
+
 };

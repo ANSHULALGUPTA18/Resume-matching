@@ -1,7 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { jobService } from '../../services/jobService';
-import { candidateService } from '../../services/candidateService';
 import { useApp } from '../../contexts/AppContext';
 import toast from 'react-hot-toast';
 
@@ -34,19 +33,26 @@ const JobUpload: React.FC = () => {
   const handleImport = async () => {
     try {
       setProcessing(true);
+      let response: any;
+
       if (mode === 'upload') {
         if (!selectedFile) { toast.error('Please select a file'); return; }
-        const response = await jobService.uploadJD(selectedFile, company);
-        setCurrentJob(response.job);
-        toast.success('Job description uploaded successfully!');
+        response = await jobService.uploadJD(selectedFile, company);
       } else {
         if (!jdText.trim()) { toast.error('Please enter job description text'); return; }
-        const response = await jobService.importText(jdText, {
+        response = await jobService.importText(jdText, {
           company: company || undefined,
           title: jobTitle || undefined,
           fileName: 'manual-input.txt',
         });
-        setCurrentJob(response.job);
+      }
+
+      setCurrentJob(response.job);
+      setCandidates([]);
+
+      if (response.isExisting) {
+        toast.success('JD loaded from cache — upload resumes and click Check Fit');
+      } else {
         toast.success('Job description imported successfully!');
       }
     } catch {
@@ -56,15 +62,9 @@ const JobUpload: React.FC = () => {
     }
   };
 
-  const handleNewJob = async () => {
-    // Delete all candidates for the current job from DB
-    if (currentJob?._id) {
-      try {
-        await candidateService.deleteByJob(currentJob._id);
-      } catch {
-        // Non-blocking — reset UI regardless
-      }
-    }
+  const handleNewJob = () => {
+    // Keep candidates in DB so cached scores are available when same JD is re-uploaded.
+    // Only clear the UI state.
     setCurrentJob(null);
     setCandidates([]);
     setSelectedFile(null);

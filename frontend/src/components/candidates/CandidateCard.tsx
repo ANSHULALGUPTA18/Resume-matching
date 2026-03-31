@@ -47,7 +47,7 @@ const CandidateCard: React.FC<Props> = ({ candidate, onStatusChange }) => {
     ? `${BACKEND_URL}/uploads/resumes/${candidate.resumePath.split(/[\\/]/).pop()}`
     : null;
 
-  const scoreColor = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#ef4444';
+const scoreColor = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#ef4444';
 
   const statusBadge = {
     shortlisted: { bg: '#DCFCE7', text: '#15803D', label: 'Shortlisted' },
@@ -142,7 +142,7 @@ const CandidateCard: React.FC<Props> = ({ candidate, onStatusChange }) => {
               <button
                 onClick={() => onStatusChange(candidate._id, 'hold')}
                 className="px-3 py-1 text-xs font-semibold rounded text-white transition-colors"
-                style={{ backgroundColor: '#F59E0B' }}
+                style={{ backgroundColor: '#3B82F6' }}
               >
                 Hold
               </button>
@@ -232,14 +232,14 @@ const CandidateCard: React.FC<Props> = ({ candidate, onStatusChange }) => {
                 </span>
               </p>
               <div className="flex flex-wrap gap-1">
-                {sb.matchedRequired?.map(s => (
+                {sb.matchedRequired?.slice(0, 20).map(s => (
                   <span key={s} className="px-1.5 py-0.5 rounded text-xs bg-green-50 text-green-700 border border-green-200">
-                    ✓ {s}
+                     {s}
                   </span>
                 ))}
-                {sb.missingRequired?.map(s => (
+                {sb.missingRequired?.slice(0, 20).map(s => (
                   <span key={s} className="px-1.5 py-0.5 rounded text-xs bg-red-50 text-red-600 border border-red-200">
-                    ✗ {s}
+                     {s}
                   </span>
                 ))}
               </div>
@@ -256,12 +256,12 @@ const CandidateCard: React.FC<Props> = ({ candidate, onStatusChange }) => {
                 </span>
               </p>
               <div className="flex flex-wrap gap-1">
-                {sb.matchedPreferred?.map(s => (
+                {sb.matchedPreferred?.slice(0, 20).map(s => (
                   <span key={s} className="px-1.5 py-0.5 rounded text-xs bg-blue-50 text-blue-600 border border-blue-200">
                     ✓ {s}
                   </span>
                 ))}
-                {sb.missingPreferred?.map(s => (
+                {sb.missingPreferred?.slice(0, 20).map(s => (
                   <span key={s} className="px-1.5 py-0.5 rounded text-xs bg-yellow-50 text-yellow-700 border border-yellow-200">
                     ⚠ {s}
                   </span>
@@ -276,12 +276,12 @@ const CandidateCard: React.FC<Props> = ({ candidate, onStatusChange }) => {
               <p className="font-semibold text-gray-700 mb-1">LLM Insights</p>
               {llmf.keyStrengths?.slice(0, 2).map((s, i) => (
                 <p key={i} className="text-green-700 flex items-start gap-1">
-                  <span className="flex-shrink-0">💪</span>{s}
+                  <span className="flex-shrink-0"></span>{s}
                 </p>
               ))}
               {llmf.keyGaps?.slice(0, 2).map((g, i) => (
                 <p key={i} className="text-orange-600 flex items-start gap-1 mt-0.5">
-                  <span className="flex-shrink-0">⚠</span>{g}
+                  <span className="flex-shrink-0"></span>{g}
                 </p>
               ))}
             </div>

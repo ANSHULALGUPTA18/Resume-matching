@@ -5,12 +5,33 @@ import CandidateList from '../components/candidates/CandidateList';
 import ResumesWidget from '../components/upload/ResumesWidget';
 import CheckFitButton from '../components/upload/CheckFitButton';
 import { useApp } from '../contexts/AppContext';
+import axios from 'axios';
+import toast from 'react-hot-toast';
+
+const API_BASE = process.env.REACT_APP_API_URL || '/api';
 
 const Dashboard: React.FC = () => {
-  const { candidates } = useApp();
+  const { candidates, setCurrentJob, setCandidates, setUploadedResumes } = useApp();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [filter, setFilter] = useState('all');
   const [sortBy, setSortBy] = useState('score');
+  const [clearing, setClearing] = useState(false);
+
+  const handleClearCache = async () => {
+    if (!window.confirm('Delete all jobs and candidates from the database? This cannot be undone.')) return;
+    setClearing(true);
+    try {
+      await axios.delete(`${API_BASE}/jobs/clear-all`);
+      setCurrentJob(null);
+      setCandidates([]);
+      setUploadedResumes([]);
+      toast.success('Cache cleared — database is empty');
+    } catch {
+      toast.error('Failed to clear cache');
+    } finally {
+      setClearing(false);
+    }
+  };
 
   const shortlisted = candidates.filter(c => c.status === 'shortlisted').length;
   const onHold      = candidates.filter(c => c.status === 'hold').length;
@@ -70,6 +91,21 @@ const Dashboard: React.FC = () => {
                   {tab.label}
                 </button>
               ))}
+
+              {/* Clear cache button */}
+              <button
+                onClick={handleClearCache}
+                disabled={clearing}
+                className="ml-2 px-2 py-1 text-xs font-medium rounded border transition-colors disabled:opacity-50 flex items-center gap-1"
+                style={{ borderColor: '#EF4444', color: '#EF4444', backgroundColor: 'transparent' }}
+                title="Delete all jobs and candidates from database"
+              >
+                <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                {clearing ? 'Clearing…' : 'Clear DB'}
+              </button>
             </div>
 
             <div className="flex-1" />

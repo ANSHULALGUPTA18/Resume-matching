@@ -2,18 +2,19 @@ import express from 'express';
 import { UploadedFile } from 'express-fileupload';
 import path from 'path';
 import Job from '../models/Job';
+import Candidate from '../models/Candidate';
 import parserService from '../services/parserService';
 import vectorService from '../services/vectorService';
+import redisService from '../services/redisService';
 
 const router = express.Router();
 
 // Generate whole-doc + section embeddings for a job (runs after response is sent)
 async function generateJobEmbeddings(jobId: string, text: string): Promise<void> {
   try {
-    const [embedding, sectionEmbeddings] = await Promise.all([
-      vectorService.generateEmbedding(text, 'query'),
-      vectorService.generateSectionEmbeddings(text, 'query'),
-    ]);
+    // Sequential — Flask embedding server is single-threaded; parallel calls cause ECONNRESET
+    const embedding = await vectorService.generateEmbedding(text, 'query');
+    const sectionEmbeddings = await vectorService.generateSectionEmbeddings(text, 'query');
     await Job.update(jobId, { embedding, sectionEmbeddings });
     console.log(`Job ${jobId}: embeddings stored (${embedding.length}d, sections: ${Object.keys(sectionEmbeddings).join(',')})`);
   } catch (err: any) {
@@ -47,6 +48,24 @@ router.post('/upload', async (req, res) => {
     const text = await parserService.extractText(uploadPath);
     console.log('Text extracted, length:', text.length);
 
+    // ── JD deduplication: same content → return existing job + its candidates ──
+    const jdHash = parserService.computeTextHash(text);
+    const existingJob = await Job.findByHash(jdHash);
+    if (existingJob) {
+      console.log(`JD cache hit: returning existing job ${existingJob._id}`);
+      // Regenerate embeddings if they were never stored (e.g. server was down at upload time)
+      if (!existingJob.sectionEmbeddings) {
+        generateJobEmbeddings(existingJob._id, existingJob.rawText || existingJob.description).catch(() => {});
+      }
+      const existingCandidates = await Candidate.findByJobId(existingJob._id);
+      return res.json({
+        message: 'Job already exists — loaded from cache',
+        job: existingJob,
+        existingCandidates,
+        isExisting: true,
+      });
+    }
+
     // Parse job description
     const parsedJob = parserService.parseJobDescription(text);
     const skillSplit = parserService.parseRequiredPreferredSkills(
@@ -64,6 +83,7 @@ router.post('/upload', async (req, res) => {
       ...parsedJob,
       fileName: jdFile.name,
       company: companyName,
+      jdHash,
     });
 
     // Generate embeddings (non-blocking)
@@ -71,7 +91,8 @@ router.post('/upload', async (req, res) => {
 
     res.json({
       message: 'Job description uploaded and parsed successfully',
-      job
+      job,
+      isExisting: false,
     });
   } catch (error: any) {
     console.error('Error uploading JD:', error);
@@ -86,6 +107,16 @@ router.get('/', async (req, res) => {
     res.json(jobs);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
+  }
+});
+
+// Redis + DB cache stats — MUST be before /:id or Express matches "cache-stats" as an id
+router.get('/cache-stats', async (req, res) => {
+  try {
+    const stats = await redisService.getCacheStats();
+    res.json(stats);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
   }
 });
 
@@ -111,6 +142,23 @@ router.post('/import-text', async (req, res) => {
       return res.status(400).json({ message: 'Text is required' });
     }
 
+    // ── JD deduplication ──────────────────────────────────────────────────────
+    const jdHash = parserService.computeTextHash(text);
+    const existingJob = await Job.findByHash(jdHash);
+    if (existingJob) {
+      console.log(`JD cache hit (text): returning existing job ${existingJob._id}`);
+      if (!existingJob.sectionEmbeddings) {
+        generateJobEmbeddings(existingJob._id, existingJob.rawText || existingJob.description).catch(() => {});
+      }
+      const existingCandidates = await Candidate.findByJobId(existingJob._id);
+      return res.json({
+        message: 'Job already exists — loaded from cache',
+        job: existingJob,
+        existingCandidates,
+        isExisting: true,
+      });
+    }
+
     const parsedJob = parserService.parseJobDescription(text);
     const skillSplit = parserService.parseRequiredPreferredSkills(
       text, parsedJob.requirements.skills
@@ -130,6 +178,7 @@ router.post('/import-text', async (req, res) => {
       keywords: parsedJob.keywords || [],
       rawText: text,
       fileName: body.fileName || 'manual-input.txt',
+      jdHash,
     });
 
     // Generate embeddings (non-blocking)
@@ -137,11 +186,40 @@ router.post('/import-text', async (req, res) => {
 
     res.json({
       message: 'Job description imported successfully',
-      job
+      job,
+      isExisting: false,
     });
   } catch (error: any) {
     console.error('Error importing JD from text:', error);
     res.status(500).json({ message: error.message });
+  }
+});
+
+// Regenerate section embeddings for all jobs that are missing them (sequential)
+router.post('/regenerate-embeddings', async (req, res) => {
+  try {
+    const jobs = await Job.findAll();
+    const missing = jobs.filter(j => !j.sectionEmbeddings);
+    console.log(`Regenerating embeddings for ${missing.length} job(s) sequentially...`);
+    res.json({ message: `Regenerating embeddings for ${missing.length} job(s) in background`, count: missing.length });
+    // Process one at a time to avoid overwhelming the embedding server
+    for (const j of missing) {
+      await generateJobEmbeddings(j._id, j.rawText || j.description).catch(() => {});
+    }
+    console.log(`Embedding regeneration complete for ${missing.length} job(s)`);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// Delete all jobs and candidates + flush Redis cache
+router.delete('/clear-all', async (req, res) => {
+  try {
+    await Job.clearAll();
+    await redisService.clearAllCache();
+    res.json({ message: 'All cache data cleared (PostgreSQL + Redis)' });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
   }
 });
 

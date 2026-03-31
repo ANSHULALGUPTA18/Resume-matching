@@ -31,10 +31,9 @@ const CheckFitButton: React.FC = () => {
           for (const c of response.candidates) {
             if ((c as any).isDuplicate) {
               dupCount++;
-              toast(`⚠ Duplicate: ${uploadedResumes[i].fileName}`, { icon: '⚠️', duration: 2500 });
-            } else {
-              allCandidates.push(c as Candidate);
             }
+            // Always include — duplicates are cached results with full scores
+            allCandidates.push(c as Candidate);
           }
         }
       } catch (err: any) {
@@ -50,31 +49,38 @@ const CheckFitButton: React.FC = () => {
     setCandidates(sorted);
 
     if (sorted.length > 0) {
-      const msg = dupCount > 0
-        ? `${sorted.length} analyzed, ${dupCount} duplicate(s) skipped`
-        : `Analysis complete. Top: ${sorted[0]?.personalInfo?.name || sorted[0]?.fileName || 'Top Match'}`;
+      const newCount = sorted.length - dupCount;
+      let msg: string;
+      if (dupCount === sorted.length) {
+        msg = `All ${dupCount} loaded from cache — no re-processing needed`;
+      } else if (dupCount > 0) {
+        msg = `${newCount} new scored, ${dupCount} loaded from cache`;
+      } else {
+        msg = `Analysis complete. Top: ${sorted[0]?.personalInfo?.name || sorted[0]?.fileName || 'Top Match'}`;
+      }
       toast.success(msg);
-    } else if (dupCount > 0) {
-      toast(`All ${dupCount} resume(s) were duplicates — already analyzed`, { icon: '⚠️' });
     }
 
     setProcessing(false);
     setCurrent(0);
     setTotal(0);
 
-    // Phase 3 (embeddings) + Phase 4 (Groq) run async on backend.
-    // Re-fetch at 5s and 15s to capture updated semantic + LLM scores.
-    const jobId = currentJob._id;
-    const refresh = async () => {
-      try {
-        const updated = await candidateService.getCandidatesByJob(jobId);
-        if (updated?.length > 0) {
-          setCandidates([...updated].sort((a, b) => (b.score?.overall || 0) - (a.score?.overall || 0)));
-        }
-      } catch {}
-    };
-    setTimeout(refresh, 5000);
-    setTimeout(refresh, 15000);
+    // Phase 3+4 run async on backend only for NEW resumes (not cached ones).
+    // Skip refresh entirely when all results came from cache.
+    const newCount = sorted.length - dupCount;
+    if (newCount > 0) {
+      const jobId = currentJob._id;
+      const refresh = async () => {
+        try {
+          const updated = await candidateService.getCandidatesByJob(jobId);
+          if (updated?.length > 0) {
+            setCandidates([...updated].sort((a, b) => (b.score?.overall || 0) - (a.score?.overall || 0)));
+          }
+        } catch {}
+      };
+      setTimeout(refresh, 5000);
+      setTimeout(refresh, 15000);
+    }
   };
 
   const isDisabled = !currentJob || uploadedResumes.length === 0 || processing;

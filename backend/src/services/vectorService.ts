@@ -20,6 +20,17 @@ function getGroqClient(): OpenAI {
   return new OpenAI({ apiKey, baseURL: 'https://api.groq.com/openai/v1' });
 }
 
+// ── Embedding server health check ─────────────────────────────────────────────
+
+export async function isEmbeddingServerUp(): Promise<boolean> {
+  try {
+    await axios.get(`${EMBEDDING_SERVER_URL}/health`, { timeout: 2000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ── Single embedding ───────────────────────────────────────────────────────────
 
 export async function generateEmbedding(text: string, type: 'query' | 'passage' = 'passage'): Promise<number[]> {
@@ -50,7 +61,7 @@ export async function generateSectionEmbeddings(
   try {
     const response = await axios.post(`${EMBEDDING_SERVER_URL}/embed-sections`, {
       text: text.slice(0, 12000), type
-    }, { timeout: 60000 });
+    }, { timeout: 15000 });
 
     return response.data.embeddings as SectionEmbeddings;
   } catch (error: any) {
@@ -195,4 +206,4 @@ export async function llmScore(jdText: string, resumeText: string): Promise<LlmS
   };
 }
 
-export default { generateEmbedding, generateSectionEmbeddings, cosineSimilarity, scoreFromEmbeddings, scoreFromSectionEmbeddings, llmScore };
+export default { isEmbeddingServerUp, generateEmbedding, generateSectionEmbeddings, cosineSimilarity, scoreFromEmbeddings, scoreFromSectionEmbeddings, llmScore };

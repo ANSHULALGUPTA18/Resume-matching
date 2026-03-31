@@ -24,7 +24,21 @@ The tables (`jobs`, `candidates`) are created **automatically** on first backend
 net start postgresql-x64-18
 ```
 
-### 2. Start the Local Embedding Server (Terminal 1) — optional, for vector matching
+### 2. Start Redis (Terminal — WSL)
+```powershell
+wsl redis-server /etc/redis/redis.conf --daemonize yes
+```
+**Wait for**: no output (daemonized). Verify with `wsl redis-cli ping` → should return `PONG`.
+
+> **One-time setup required**: WSL2 needs mirrored networking so Windows Node.js can reach WSL Redis.
+> Create `C:\Users\AnshuLal Gupta\.wslconfig` with:
+> ```
+> [wsl2]
+> networkingMode=mirrored
+> ```
+> Then run `wsl --shutdown` once. After that, `wsl redis-server --daemonize yes` is all you need.
+
+### 3. Start the Local Embedding Server (Terminal 1) — optional, for vector matching
 ```powershell
 cd "C:\Users\AnshuLal Gupta\Desktop\resume optimizer\ATS-Resume-Optimizer"
 python embedding_server.py
@@ -33,14 +47,14 @@ python embedding_server.py
 
 > Skip this step if you only want keyword-based matching (the app works without it).
 
-### 3. Start the Backend Server (Terminal 2)
+### 4. Start the Backend Server (Terminal 2)
 ```powershell
 cd "C:\Users\AnshuLal Gupta\Desktop\resume optimizer\ATS-Resume-Optimizer\backend"
 npm run dev
 ```
-**Wait for**: "PostgreSQL tables initialized" and "Server is running on port 5000"
+**Wait for**: "PostgreSQL tables initialized", "Server is running on port 5000", and **"Redis connected — score/embedding cache active"**
 
-### 4. Start the Frontend Server (Terminal 3)
+### 5. Start the Frontend Server (Terminal 3)
 ```powershell
 cd "C:\Users\AnshuLal Gupta\Desktop\resume optimizer\ATS-Resume-Optimizer\frontend"
 npm start
@@ -51,6 +65,7 @@ npm start
 
 ## Service Ports
 - **PostgreSQL**: 5432
+- **Redis**: 6379 (WSL)
 - **Embedding Server**: 5001 (Python/Flask) — optional
 - **Backend API**: 5000 (Node.js/Express)
 - **Frontend**: 3000 (React)
@@ -64,6 +79,8 @@ DATABASE_URL=postgresql://postgres:Anshu@12345@localhost:5432/ats_resume_optimiz
 NODE_ENV=development
 MATCHING_MODE=vector
 EMBEDDING_SERVER_URL=http://localhost:5001
+GROQ_API_KEY=gsk_...
+REDIS_URL=redis://127.0.0.1:6379
 ```
 
 ---
@@ -79,6 +96,10 @@ Set `MATCHING_MODE=keyword` in `.env` to disable vector matching.
 ---
 
 ## Troubleshooting
+
+### Backend shows "Redis error — falling back to DB-only mode"
+Redis is not running. Start it: `wsl redis-server --daemonize yes`
+If that doesn't help, verify mirrored networking is enabled in `~/.wslconfig` (see Step 2 above).
 
 ### Backend fails with "ECONNREFUSED :5432"
 PostgreSQL is not running. Start it:

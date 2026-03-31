@@ -52,6 +52,7 @@ export const initDB = async (): Promise<void> => {
   // Add new columns to existing tables (safe for already-deployed DBs)
   const alterStatements = [
     `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS section_embeddings JSONB DEFAULT NULL`,
+    `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS jd_hash TEXT`,
     `ALTER TABLE candidates ADD COLUMN IF NOT EXISTS extracted_data JSONB DEFAULT NULL`,
     `ALTER TABLE candidates ADD COLUMN IF NOT EXISTS section_embeddings JSONB DEFAULT NULL`,
     `ALTER TABLE candidates ADD COLUMN IF NOT EXISTS score_breakdown JSONB DEFAULT NULL`,

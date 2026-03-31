@@ -169,88 +169,50 @@ export function extractCandidateData(candidateData: any): ExtractedData {
   let yearsOfExperience: number | null = null;
   const currentYear = new Date().getFullYear();
 
-  // ── Method 1: Explicit self-reported statements ────────────────────────────
-  // Catches: "8 years of experience", "experience of 5+ years", "10 years working in"
-  const explicitPatterns = [
-    /(\d+)\+?\s*years?\s*(?:of\s+)?(?:experience|exp)/gi,
-    /experience\s*(?:of\s+)?(\d+)\+?\s*years?/gi,
-    /(\d+)\+?\s*years?\s*(?:in|working|professional)/gi,
-    /over\s+(\d+)\s*years?/gi,
-    /more\s+than\s+(\d+)\s*years?/gi,
-  ];
-  const explicitMatches: number[] = [];
-  for (const pattern of explicitPatterns) {
-    let match;
-    while ((match = pattern.exec(rawText)) !== null) {
-      const val = parseInt(match[1], 10);
-      if (val > 0 && val <= 50) explicitMatches.push(val);
-    }
-  }
+  const MONTHS_PAT = 'jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december';
+  const PRESENT_PAT = 'present|current|now|till\\s+date|to\\s+date';
 
-  // ── Method 2: Calculate from ALL date ranges in resume ────────────────────
-  // Handles formats:
-  //   "2015 – 2018"            "2015-2023"            "2015 to 2018"
-  //   "Jan 2015 – Dec 2018"    "March 2018 to Present"
-  //   "1998 – 2003"            "2021 – present/current/now"
-  //   "Sep'15 – Mar'18"        "2015–present"
-  const MONTHS = 'jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec|january|february|march|april|june|july|august|september|october|november|december';
-  const YEAR   = '((?:19|20)\\d{2})';
-  const SEP    = '\\s*[-–—]\\s*|\\s+to\\s+';
-  const PRESENT = 'present|current|now|till\\s+date|to\\s+date';
-
-  // Pattern: optional month + year  →  separator  →  optional month + year (or "present")
-  const rangePattern = new RegExp(
-    `(?:${MONTHS})\\.?\\s*'?${YEAR}|${YEAR}` +   // start: "Jan 2015" or just "2015"
-    `(?:${SEP})` +                                  // separator
-    `(?:(?:${MONTHS})\\.?\\s*'?${YEAR}|${YEAR}|(?:${PRESENT}))`,
-    'gi'
-  );
-
-  // Simpler fallback pattern: just two years with separator
-  const simpleRangePattern = new RegExp(
-    `${YEAR}\\s*[-–—]\\s*(?:${YEAR}|(?:${PRESENT}))`,
-    'gi'
-  );
-
-  // Collect all (startYear, endYear) pairs
   const intervals: [number, number][] = [];
   const usedRanges = new Set<string>();
-  let m;
 
   const tryAddInterval = (fullMatch: string, startStr: string, endStr?: string) => {
-    if (usedRanges.has(fullMatch)) return;
-    usedRanges.add(fullMatch);
+    const key = fullMatch.trim().toLowerCase();
+    if (usedRanges.has(key)) return;
+    usedRanges.add(key);
     const startYear = parseInt(startStr, 10);
-    // endStr is undefined when the PRESENT branch of the regex matched instead of a year —
-    // fall back to testing the full match so "2019-present" is correctly detected
-    const isPresent = /present|current|now|till|to\s*date/i.test(endStr ?? fullMatch);
-    const endYear   = isPresent ? currentYear : parseInt(endStr!, 10);
+    const isPresent = !endStr || /present|current|now|till|to\s*date/i.test(endStr);
+    const endYear = isPresent ? currentYear : parseInt(endStr, 10);
     if (startYear >= 1980 && endYear <= currentYear + 1 && endYear >= startYear) {
       intervals.push([startYear, endYear]);
     }
   };
 
-  // Pattern A: "2015 - 2018"  or  "2015 – present"
-  while ((m = simpleRangePattern.exec(rawText)) !== null) {
-    tryAddInterval(m[0], m[1], m[2]);
-  }
+  // ── Method 1: Date ranges from experience[].duration fields ONLY ──────────
+  // Scans only work experience entries — education, project, and cert dates stay out
+  for (const exp of experience) {
+    const dur = String(exp.duration || '').trim();
+    if (!dur) continue;
 
-  // Pattern B: "Jan 2015 – Dec 2018"  /  "March 2019 to Present"
-  // Extracts the YEAR part from "Month Year" phrases around a separator
-  const monthYearPattern = new RegExp(
-    `(?:${MONTHS})\\.?\\s+'?((?:19|20)\\d{2})` +   // "Jan 2015"
-    `\\s*(?:[-–—]|to)\\s*` +                          // separator
-    `(?:(?:${MONTHS})\\.?\\s+'?((?:19|20)\\d{2})|(?:${PRESENT}))`,
-    'gi'
-  );
-  const rawText2 = rawText; // fresh string for new regex
-  while ((m = monthYearPattern.exec(rawText2)) !== null) {
-    const endVal = m[2] ?? (currentYear.toString());
-    tryAddInterval(m[0], m[1], endVal);
+    // "2015 - 2018" or "2015 – Present"
+    const simple = new RegExp(
+      `((?:19|20)\\d{2})\\s*[-–—]\\s*(?:((?:19|20)\\d{2})|(${PRESENT_PAT}))`, 'gi'
+    );
+    let m: RegExpExecArray | null;
+    while ((m = simple.exec(dur)) !== null) {
+      tryAddInterval(m[0], m[1], m[2] || m[3]);
+    }
+
+    // "Jan 2015 – Dec 2018" or "March 2019 to Present"
+    const monthYear = new RegExp(
+      `(?:${MONTHS_PAT})\\.?\\s*'?((?:19|20)\\d{2})\\s*(?:[-–—]|to)\\s*` +
+      `(?:(?:${MONTHS_PAT})\\.?\\s*'?((?:19|20)\\d{2})|(${PRESENT_PAT}))`, 'gi'
+    );
+    while ((m = monthYear.exec(dur)) !== null) {
+      tryAddInterval(m[0], m[1], m[2] || m[3]);
+    }
   }
 
   // ── Merge overlapping intervals (prevents double-counting parallel jobs) ──
-  // Example: [(2015,2019),(2018,2022)] → merged → [(2015,2022)] = 7 years, not 8
   let calculatedYears: number | null = null;
   if (intervals.length > 0) {
     intervals.sort((a, b) => a[0] - b[0]);
@@ -258,7 +220,6 @@ export function extractCandidateData(candidateData: any): ExtractedData {
     for (let i = 1; i < intervals.length; i++) {
       const last = merged[merged.length - 1];
       if (intervals[i][0] <= last[1]) {
-        // Overlapping — extend the end if needed
         last[1] = Math.max(last[1], intervals[i][1]);
       } else {
         merged.push(intervals[i]);
@@ -268,18 +229,29 @@ export function extractCandidateData(candidateData: any): ExtractedData {
     if (total > 0 && total <= 50) calculatedYears = total;
   }
 
-  // ── Pick the best value: take MAX of both methods ─────────────────────────
-  // Self-reported may say "5+ years" but date ranges show 8 years → trust the higher
-  if (explicitMatches.length > 0 && calculatedYears !== null) {
-    yearsOfExperience = Math.max(Math.max(...explicitMatches), calculatedYears);
-  } else if (explicitMatches.length > 0) {
-    yearsOfExperience = Math.max(...explicitMatches);
-  } else if (calculatedYears !== null) {
-    yearsOfExperience = calculatedYears;
+  // ── Method 2: Explicit statements in full text (fallback) ─────────────────
+  // Only used when experience entries have no parseable duration strings
+  const explicitMatches: number[] = [];
+  if (calculatedYears === null) {
+    const explicitPatterns = [
+      /(\d+)\+?\s*years?\s*(?:of\s+)?(?:experience|exp)/gi,
+      /experience\s*(?:of\s+)?(\d+)\+?\s*years?/gi,
+    ];
+    for (const pattern of explicitPatterns) {
+      let match;
+      while ((match = pattern.exec(rawText)) !== null) {
+        const val = parseInt(match[1], 10);
+        if (val >= 1 && val <= 40) explicitMatches.push(val);
+      }
+    }
   }
 
-  // ── Fallback: estimate from structured experience entries ──────────────────
-  if (yearsOfExperience === null && experience.length > 0) {
+  if (calculatedYears !== null) {
+    yearsOfExperience = calculatedYears;
+  } else if (explicitMatches.length > 0) {
+    yearsOfExperience = Math.max(...explicitMatches);
+  } else if (experience.length > 0) {
+    // Last resort: rough estimate from number of experience entries
     yearsOfExperience = Math.round(experience.length * 1.5);
   }
 
@@ -479,7 +451,9 @@ class ScoringService {
   ): { finalScore: number; scoreBreakdown: ScoreBreakdown } {
 
     let finalScore: number;
-    const hardPenalty = existingBreakdown.experiencePenalty ?? 0;
+    const experiencePenalty = existingBreakdown.experiencePenalty ?? 0;
+    const educationPenalty  = existingBreakdown.educationPenalty  ?? 0;
+    const totalPenalty = Math.min(experiencePenalty + educationPenalty, 0.60);
 
     if (sectionSemanticScore !== null && llmScoreValue !== null) {
       // All three layers: skill×0.35 + section×0.40 + llm×0.25
@@ -494,6 +468,11 @@ class ScoringService {
       finalScore = Math.round(baseSkillScore * 0.50 + llmScoreValue * 0.50);
     } else {
       finalScore = baseSkillScore;
+    }
+
+    // Re-apply Phase 1 hard filter penalties — must carry through to hybrid score
+    if (totalPenalty > 0) {
+      finalScore = Math.round(finalScore * (1 - totalPenalty));
     }
 
     finalScore = Math.min(100, Math.max(0, finalScore));
