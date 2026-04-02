@@ -68,10 +68,13 @@ async function runHybridPipeline(
     }
 
     // Phase 4 — LLM re-ranking (only for promising candidates)
+    // Use baseSkillScore (raw skill match) not penalized overallScore — a candidate
+    // with 79% skill match should still get LLM evaluation even if experience
+    // penalty dropped their overall score below the threshold
     let llmScoreValue: number | null = null;
     let llmFeedback: any = null;
 
-    if ((overallScore ?? baseSkillScore) >= LLM_MIN_SCORE && jobWithEmb) {
+    if (baseSkillScore >= LLM_MIN_SCORE && jobWithEmb) {
       try {
         const llmResult = await vectorService.llmScore(
           jobWithEmb.rawText || jobWithEmb.description,

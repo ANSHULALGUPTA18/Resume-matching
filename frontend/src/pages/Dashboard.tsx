@@ -11,11 +11,77 @@ import toast from 'react-hot-toast';
 const API_BASE = process.env.REACT_APP_API_URL || '/api';
 
 const Dashboard: React.FC = () => {
-  const { candidates, setCurrentJob, setCandidates, setUploadedResumes } = useApp();
+  const { candidates, currentJob, setCurrentJob, setCandidates, setUploadedResumes } = useApp();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [filter, setFilter] = useState('all');
   const [sortBy, setSortBy] = useState('score');
   const [clearing, setClearing] = useState(false);
+
+  const handleExportCSV = () => {
+    // Apply same filter + sort as CandidateList
+    const filtered = candidates.filter(c => filter === 'all' ? true : c.status === filter);
+    const sorted = [...filtered].sort((a, b) => {
+      if (sortBy === 'name') return (a.personalInfo?.name || '').localeCompare(b.personalInfo?.name || '');
+      return (b.score?.overall || 0) - (a.score?.overall || 0);
+    });
+
+    if (sorted.length === 0) { toast.error('No candidates to export'); return; }
+
+    // Wrap value in quotes if it contains comma, quote, or newline
+    const cell = (val: any): string => {
+      if (val == null) return '';
+      const s = String(val);
+      return (s.includes(',') || s.includes('"') || s.includes('\n'))
+        ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const join = (arr?: string[]): string => arr?.filter(Boolean).join(' | ') ?? '';
+
+    const headers = [
+      'Rank', 'Name', 'Email', 'Phone', 'Years Exp', 'Education',
+      'Overall Score', 'Keyword Score', 'Semantic Score', 'LLM Score',
+      'Status', 'Matched Skills', 'Missing Skills', 'Key Strengths', 'Key Gaps', 'File',
+    ];
+
+    const rows = sorted.map((c, i) => {
+      const sb  = (c as any).scoreBreakdown;
+      const llm = (c as any).llmFeedback;
+      const ext = (c as any).extractedData;
+      return [
+        i + 1,
+        c.personalInfo?.name   ?? '',
+        c.personalInfo?.email  ?? '',
+        c.personalInfo?.phone  ?? '',
+        ext?.yearsOfExperience ?? '',
+        ext?.educationLevel    ?? '',
+        c.score?.overall       ?? '',
+        sb?.skillMatchScore    ?? '',
+        sb?.sectionSemanticScore != null ? sb.sectionSemanticScore : '',
+        sb?.llmScore           != null ? sb.llmScore : '',
+        c.status,
+        join(sb?.matchedRequired),
+        join(sb?.missingRequired),
+        join(llm?.keyStrengths),
+        join(llm?.keyGaps),
+        (c as any).fileName    ?? '',
+      ].map(cell).join(',');
+    });
+
+    // UTF-8 BOM so Excel opens it without garbled characters
+    const csv = '\uFEFF' + [headers.map(cell).join(','), ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    const label = filter === 'all' ? 'all' : filter;
+    const slug  = (currentJob?.title || 'candidates').replace(/[^a-z0-9]+/gi, '_').toLowerCase();
+    const date  = new Date().toISOString().slice(0, 10);
+    a.href     = url;
+    a.download = `${slug}_${label}_${date}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    toast.success(`Exported ${sorted.length} candidate${sorted.length !== 1 ? 's' : ''}`);
+  };
 
   const handleClearCache = async () => {
     if (!window.confirm('Delete all jobs and candidates from the database? This cannot be undone.')) return;
@@ -66,14 +132,7 @@ const Dashboard: React.FC = () => {
           <div className="flex items-center px-4 py-2 bg-white border-b border-gray-200 gap-3 flex-shrink-0">
 
             {/* Hamburger */}
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="text-gray-500 hover:text-gray-700 flex-shrink-0"
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
+            
 
             {/* Filter tabs */}
             <div className="flex items-center gap-1">
@@ -106,6 +165,22 @@ const Dashboard: React.FC = () => {
                 </svg>
                 {clearing ? 'Clearing…' : 'Clear DB'}
               </button>
+
+              {/* Export CSV button — only shown when there are candidates */}
+              {candidates.length > 0 && (
+                <button
+                  onClick={handleExportCSV}
+                  className="ml-1 px-2 py-1 text-xs font-medium rounded border transition-colors flex items-center gap-1"
+                  style={{ borderColor: '#10B981', color: '#10B981', backgroundColor: 'transparent' }}
+                  title={`Export ${filter === 'all' ? 'all' : filter} candidates to CSV`}
+                >
+                  <svg className="h-3 w-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Export CSV
+                </button>
+              )}
             </div>
 
             <div className="flex-1" />

@@ -135,7 +135,7 @@ const scoreColor = score >= 80 ? '#10b981' : score >= 60 ? '#f59e0b' : '#ef4444'
                 className="px-3 py-1 text-xs font-semibold rounded text-white transition-colors"
                 style={{ backgroundColor: '#3B82F6' }}
               >
-                Shortlisted
+                Shortlist
               </button>
             )}
             {candidate.status !== 'hold' && (
