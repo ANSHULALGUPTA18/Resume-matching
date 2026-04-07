@@ -5,6 +5,7 @@ import fileUpload from 'express-fileupload';
 import path from 'path';
 import fs from 'fs';
 import { initDB } from './db';
+import { getBoss } from './queue/batchQueue';
 
 // Load environment variables — override: true ensures .env values win over system env
 dotenv.config({ override: true });
@@ -13,6 +14,7 @@ dotenv.config({ override: true });
 import jobRoutes from './routes/jobRoutes';
 import candidateRoutes from './routes/candidateRoutes';
 import scoringRoutes from './routes/scoringRoutes';
+import batchRoutes from './routes/batchRoutes';
 
 const app: Application = express();
 
@@ -31,7 +33,7 @@ app.use(fileUpload({
   limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
   abortOnLimit: true,
   createParentPath: true,
-  useTempFiles: false
+  useTempFiles: false,
 }));
 
 // Body parsers
@@ -41,9 +43,6 @@ app.use(express.urlencoded({ extended: true }));
 // Request logging
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.path}`);
-  if (req.files) {
-    console.log('Files received:', Object.keys(req.files));
-  }
   next();
 });
 
@@ -63,8 +62,9 @@ app.use('/uploads', express.static(uploadsBase));
 app.use('/api/jobs', jobRoutes);
 app.use('/api/candidates', candidateRoutes);
 app.use('/api/scoring', scoringRoutes);
+app.use('/api/batch', batchRoutes);
 
-console.log('Routes registered: /api/jobs, /api/candidates, /api/scoring');
+console.log('Routes registered: /api/jobs, /api/candidates, /api/scoring, /api/batch');
 
 // Serve React frontend in production
 if (process.env.NODE_ENV === 'production') {
@@ -90,6 +90,9 @@ const PORT = process.env.PORT || 5000;
 initDB()
   .then(() => {
     console.log('PostgreSQL tables initialized');
+    return getBoss(); // pre-warm the pg-boss queue connection
+  })
+  .then(() => {
     app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
     });

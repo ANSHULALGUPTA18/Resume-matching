@@ -4,8 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "ts-node src/server.ts",
-    "dev:watch": "nodemon --exec ts-node src/server.ts",
+    "dev": "ts-node --transpile-only src/server.ts",
+    "dev:watch": "nodemon --exec 'ts-node --transpile-only src/server.ts'",
+    "worker": "ts-node --transpile-only src/workers/resumeWorker.ts",
     "build": "tsc",
     "start": "node dist/server.js"
   },
@@ -15,6 +16,7 @@
   "dependencies": {
     "axios": "^1.13.5",
     "bcryptjs": "^3.0.2",
+    "bullmq": "^5.73.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.2",
     "express": "^5.1.0",
@@ -28,6 +30,7 @@
     "pdf-parse": "^1.1.1",
     "pdfjs-dist": "^3.11.174",
     "pg": "^8.20.0",
+    "pg-boss": "^9.0.3",
     "uuid": "^13.0.0"
   },
   "devDependencies": {

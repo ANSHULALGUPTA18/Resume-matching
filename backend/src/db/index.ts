@@ -1,4 +1,9 @@
 import { Pool } from 'pg';
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load env BEFORE creating pool so DATABASE_URL is available
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://postgres:Anshu@12345@localhost:5432/ats_resume_optimizer',
@@ -49,6 +54,20 @@ export const initDB = async (): Promise<void> => {
     )
   `);
 
+  // Batches table — tracks async bulk upload jobs
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS batches (
+      id UUID PRIMARY KEY,
+      job_id UUID NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      total_count INTEGER NOT NULL DEFAULT 0,
+      done_count INTEGER NOT NULL DEFAULT 0,
+      failed_count INTEGER NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'processing',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
   // Add new columns to existing tables (safe for already-deployed DBs)
   const alterStatements = [
     `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS section_embeddings JSONB DEFAULT NULL`,
@@ -58,6 +77,15 @@ export const initDB = async (): Promise<void> => {
     `ALTER TABLE candidates ADD COLUMN IF NOT EXISTS score_breakdown JSONB DEFAULT NULL`,
     `ALTER TABLE candidates ADD COLUMN IF NOT EXISTS llm_feedback JSONB DEFAULT NULL`,
     `ALTER TABLE candidates ADD COLUMN IF NOT EXISTS resume_hash TEXT`,
+    `ALTER TABLE candidates ADD COLUMN IF NOT EXISTS batch_id UUID REFERENCES batches(id)`,
+    // Prevent same resume being stored twice for the same job (dedup key)
+    `DO $$ BEGIN
+       IF NOT EXISTS (
+         SELECT 1 FROM pg_constraint WHERE conname = 'candidates_resume_hash_job_id_uq'
+       ) THEN
+         ALTER TABLE candidates ADD CONSTRAINT candidates_resume_hash_job_id_uq UNIQUE (resume_hash, job_id);
+       END IF;
+     END $$`,
   ];
 
   for (const sql of alterStatements) {

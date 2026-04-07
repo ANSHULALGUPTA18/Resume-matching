@@ -4,6 +4,7 @@ import JobUpload from '../components/upload/JobUpload';
 import CandidateList from '../components/candidates/CandidateList';
 import ResumesWidget from '../components/upload/ResumesWidget';
 import CheckFitButton from '../components/upload/CheckFitButton';
+import BatchProgressPanel from '../components/batch/BatchProgressPanel';
 import { useApp } from '../contexts/AppContext';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -113,6 +114,7 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="h-screen overflow-hidden flex flex-col" style={{ backgroundColor: '#F3F4F6' }}>
+      <BatchProgressPanel />
       <Header />
 
       <div className="flex flex-1 overflow-hidden min-h-0">

@@ -9,6 +9,12 @@ export interface UploadedResume {
   uploadedAt: string;
 }
 
+export interface ActiveBatch {
+  batchId: string;
+  jobId: string;
+  total: number;
+}
+
 interface AppContextType {
   currentJob: Job | null;
   setCurrentJob: (job: Job | null) => void;
@@ -20,6 +26,8 @@ interface AppContextType {
   addUploadedResumes: (resumes: UploadedResume[]) => void;
   loading: boolean;
   setLoading: (loading: boolean) => void;
+  activeBatch: ActiveBatch | null;
+  setActiveBatch: (batch: ActiveBatch | null) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -37,6 +45,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [uploadedResumes, setUploadedResumes] = useState<UploadedResume[]>([]);
   const [loading, setLoading] = useState(false);
+  const [activeBatch, setActiveBatch] = useState<ActiveBatch | null>(null);
 
   const addUploadedResumes = (newResumes: UploadedResume[]) => {
     setUploadedResumes(prev => [...prev, ...newResumes]);
@@ -67,6 +76,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         addUploadedResumes,
         loading,
         setLoading,
+        activeBatch,
+        setActiveBatch,
       }}
     >
       {children}

@@ -9,12 +9,34 @@ import redisService from '../services/redisService';
 
 const router = express.Router();
 
+// ── GET /cache-stats  (MUST be before /:id) ───────────────────────────────────
+router.get('/cache-stats', async (req, res) => {
+  try {
+    const stats = await redisService.getCacheStats();
+    res.json(stats);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// ── DELETE /clear-all ─────────────────────────────────────────────────────────
+router.delete('/clear-all', async (req, res) => {
+  try {
+    await Job.clearAll();
+    await redisService.clearAllCache();
+    res.json({ message: 'Database and cache cleared successfully' });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // Generate whole-doc + section embeddings for a job (runs after response is sent)
 async function generateJobEmbeddings(jobId: string, text: string): Promise<void> {
   try {
-    // Sequential — Flask embedding server is single-threaded; parallel calls cause ECONNRESET
-    const embedding = await vectorService.generateEmbedding(text, 'query');
-    const sectionEmbeddings = await vectorService.generateSectionEmbeddings(text, 'query');
+    const [embedding, sectionEmbeddings] = await Promise.all([
+      vectorService.generateEmbedding(text, 'query'),
+      vectorService.generateSectionEmbeddings(text, 'query'),
+    ]);
     await Job.update(jobId, { embedding, sectionEmbeddings });
     console.log(`Job ${jobId}: embeddings stored (${embedding.length}d, sections: ${Object.keys(sectionEmbeddings).join(',')})`);
   } catch (err: any) {
@@ -110,16 +132,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// Redis + DB cache stats — MUST be before /:id or Express matches "cache-stats" as an id
-router.get('/cache-stats', async (req, res) => {
-  try {
-    const stats = await redisService.getCacheStats();
-    res.json(stats);
-  } catch (err: any) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
 // Get single job
 router.get('/:id', async (req, res) => {
   try {
@@ -195,29 +207,17 @@ router.post('/import-text', async (req, res) => {
   }
 });
 
-// Regenerate section embeddings for all jobs that are missing them (sequential)
+// Regenerate section embeddings for all jobs that are missing them
 router.post('/regenerate-embeddings', async (req, res) => {
   try {
     const jobs = await Job.findAll();
     const missing = jobs.filter(j => !j.sectionEmbeddings);
-    console.log(`Regenerating embeddings for ${missing.length} job(s) sequentially...`);
-    res.json({ message: `Regenerating embeddings for ${missing.length} job(s) in background`, count: missing.length });
-    // Process one at a time to avoid overwhelming the embedding server
-    for (const j of missing) {
-      await generateJobEmbeddings(j._id, j.rawText || j.description).catch(() => {});
-    }
-    console.log(`Embedding regeneration complete for ${missing.length} job(s)`);
-  } catch (err: any) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-// Delete all jobs and candidates + flush Redis cache
-router.delete('/clear-all', async (req, res) => {
-  try {
-    await Job.clearAll();
-    await redisService.clearAllCache();
-    res.json({ message: 'All cache data cleared (PostgreSQL + Redis)' });
+    console.log(`Regenerating embeddings for ${missing.length} job(s)...`);
+    // Fire all in parallel (non-blocking per job)
+    missing.forEach(j => {
+      generateJobEmbeddings(j._id, j.rawText || j.description).catch(() => {});
+    });
+    res.json({ message: `Triggered embedding regeneration for ${missing.length} job(s)`, count: missing.length });
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }

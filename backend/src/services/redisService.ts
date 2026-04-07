@@ -27,7 +27,10 @@ function getClient(): Redis | null {
   if (client) return client;
 
   try {
-    client = new Redis(REDIS_URL, {
+    // Use host/port object — URL format (redis://) causes ECONNREFUSED on Windows→WSL
+    client = new Redis({
+      host:                 '127.0.0.1',
+      port:                 6379,
       lazyConnect:          true,
       enableOfflineQueue:   false,
       maxRetriesPerRequest: 1,

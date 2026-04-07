@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { AppProvider } from './contexts/AppContext';
 import Dashboard from './pages/Dashboard';
+import BatchProgress from './pages/BatchProgress';
 
 function App() {
   return (
@@ -11,6 +12,7 @@ function App() {
         <div className="min-h-screen bg-gray-100">
           <Routes>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/batch/:batchId" element={<BatchProgress />} />
           </Routes>
           <Toaster position="top-right" />
         </div>
