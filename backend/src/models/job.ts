@@ -11,6 +11,19 @@ export interface SectionEmbeddings {
   summary:    number[];
 }
 
+export interface JdStructured {
+  role_title: string;
+  seniority_level: 'junior' | 'mid' | 'senior' | 'lead' | 'principal';
+  must_have_skills: string[];
+  nice_to_have_skills: string[];
+  min_years_experience: number;
+  domain: string;
+  team_context: string;
+  inferred_skills: string[];
+  dealbreakers: string[];
+  flexibility_signals: string[];
+}
+
 export interface Job {
   _id: string;
   title: string;
@@ -30,6 +43,7 @@ export interface Job {
   embedding?: number[];
   sectionEmbeddings?: any;
   jdHash?: string;
+  jdStructured?: JdStructured;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -46,7 +60,8 @@ function mapRow(row: any): Job {
     fileName:          row.file_name  ?? undefined,
     embedding:         row.embedding  ?? undefined,
     sectionEmbeddings: row.section_embeddings ?? undefined,
-    jdHash:            row.jd_hash    ?? undefined,
+    jdHash:            row.jd_hash       ?? undefined,
+    jdStructured:      row.jd_structured ?? undefined,
     createdAt:         row.created_at,
     updatedAt:         row.updated_at,
   };
@@ -108,6 +123,10 @@ const Job = {
     if (data.sectionEmbeddings !== undefined) {
       sets.push(`section_embeddings = $${idx++}`);
       values.push(JSON.stringify(data.sectionEmbeddings));
+    }
+    if (data.jdStructured !== undefined) {
+      sets.push(`jd_structured = $${idx++}`);
+      values.push(JSON.stringify(data.jdStructured));
     }
     if (data.title !== undefined) {
       sets.push(`title = $${idx++}`);

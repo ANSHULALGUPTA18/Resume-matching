@@ -28,6 +28,42 @@ export interface LlmFeedback {
   keyStrengths: string[];
   keyGaps: string[];
   overallRecommendation: number;
+  verdict?: string;
+  recruiterNote?: string;
+}
+
+export interface AgentAnalysis {
+  resumeStructured?: {
+    verified_skills: Array<{ skill: string; depth: string; years: number; context: string }>;
+    true_experience_years: number;
+    seniority_level: string;
+    seniority_signals: string[];
+    domain_history: string[];
+    career_trajectory: string;
+    achievement_quality: string;
+    red_flags: string[];
+  };
+  skillValidation?: {
+    verdicts: Array<{ required_skill: string; verdict: string; candidate_equivalent: string | null; confidence: number; reasoning: string }>;
+    adjusted_skill_score: number;
+    critical_gaps: string[];
+  };
+  experienceMatch?: {
+    seniority_alignment: string;
+    domain_alignment: string;
+    years_alignment: string;
+    scope_alignment: string;
+    experience_score: number;
+    alignment_reasoning: string;
+  };
+  synthesis?: {
+    final_score: number;
+    verdict: string;
+    score_breakdown: { skills: number; experience: number; domain: number; seniority: number };
+    top_strengths: string[];
+    key_gaps: string[];
+    recruiter_note: string;
+  };
 }
 
 export interface Candidate {
@@ -58,6 +94,7 @@ export interface Candidate {
   scoreBreakdown?: any;
   llmFeedback?: any;
   resumeHash?: string;
+  agentAnalysis?: AgentAnalysis;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -85,6 +122,7 @@ function mapRow(row: any): Candidate {
     scoreBreakdown:    row.score_breakdown  ?? undefined,
     llmFeedback:       row.llm_feedback     ?? undefined,
     resumeHash:        row.resume_hash      ?? undefined,
+    agentAnalysis:     row.agent_analysis   ?? undefined,
     createdAt:         row.created_at,
     updatedAt:         row.updated_at,
   };
@@ -178,6 +216,10 @@ const Candidate = {
     if (data.improvements !== undefined) {
       sets.push(`improvements = $${idx++}`);
       values.push(JSON.stringify(data.improvements));
+    }
+    if (data.agentAnalysis !== undefined) {
+      sets.push(`agent_analysis = $${idx++}`);
+      values.push(JSON.stringify(data.agentAnalysis));
     }
     if (data.status !== undefined) {
       sets.push(`status = $${idx++}`);

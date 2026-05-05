@@ -6,6 +6,7 @@ import Candidate from '../models/Candidate';
 import parserService from '../services/parserService';
 import vectorService from '../services/vectorService';
 import redisService from '../services/redisService';
+import agentService from '../services/agentService';
 
 const router = express.Router();
 
@@ -29,6 +30,19 @@ router.delete('/clear-all', async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
+// Run Agent 1 (JD Decomposer) once per JD — non-blocking, cached in jobs.jd_structured
+async function runJdDecomposer(jobId: string, text: string): Promise<void> {
+  try {
+    const jdStructured = await agentService.decomposeJd(text);
+    if (jdStructured) {
+      await Job.update(jobId, { jdStructured });
+      console.log(`Job ${jobId}: JD structured by Agent 1 (role: ${jdStructured.role_title}, seniority: ${jdStructured.seniority_level})`);
+    }
+  } catch (err: any) {
+    console.warn(`Job ${jobId}: JD Decomposer skipped —`, err.message);
+  }
+}
 
 // Generate whole-doc + section embeddings for a job (runs after response is sent)
 async function generateJobEmbeddings(jobId: string, text: string): Promise<void> {
@@ -108,8 +122,9 @@ router.post('/upload', async (req, res) => {
       jdHash,
     });
 
-    // Generate embeddings (non-blocking)
+    // Generate embeddings + run JD Decomposer (both non-blocking)
     generateJobEmbeddings(job._id, job.rawText || job.description).catch(() => {});
+    runJdDecomposer(job._id, job.rawText || job.description).catch(() => {});
 
     res.json({
       message: 'Job description uploaded and parsed successfully',
@@ -193,8 +208,9 @@ router.post('/import-text', async (req, res) => {
       jdHash,
     });
 
-    // Generate embeddings (non-blocking)
+    // Generate embeddings + run JD Decomposer (both non-blocking)
     generateJobEmbeddings(job._id, job.rawText || job.description).catch(() => {});
+    runJdDecomposer(job._id, job.rawText || job.description).catch(() => {});
 
     res.json({
       message: 'Job description imported successfully',

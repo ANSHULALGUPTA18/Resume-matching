@@ -21,13 +21,17 @@ import parserService from '../services/parserService';
 import scoringService, { extractCandidateData } from '../services/scoringService';
 import vectorService from '../services/vectorService';
 import redisService from '../services/redisService';
+import agentService from '../services/agentService';
 import { getBoss, QUEUE_NAME } from '../queue/batchQueue';
 import type { ResumeJobData } from '../queue/batchQueue';
 
-const LLM_MIN_SCORE = 65;
+const LLM_MIN_SCORE = 40;
 const CONCURRENCY   = 10;
 
-// ── Phase 3+4 pipeline ────────────────────────────────────────────────────────
+// ── Phase 3 + LangGraph Agent Pipeline ──────────────────────────────────────
+// Phase 3 adds the main change: instead of 4 separate agent HTTP calls with
+// manual if/else routing, we make ONE call to the LangGraph graph-pipeline
+// endpoint. LangGraph handles all conditional routing internally.
 async function runHybridPipeline(
   candidateId: string,
   resumeText: string,
@@ -37,9 +41,7 @@ async function runHybridPipeline(
   overallScore: number,
   resumeHash: string
 ): Promise<void> {
-  let sectionSemanticScore: number | null = null;
-  let sectionEmbeddings: any = null;
-
+  // Fetch job (with embeddings + jdStructured from Agent 1)
   let jobWithEmb = await Job.findById(jobId, true);
   if (!jobWithEmb?.sectionEmbeddings) {
     for (let i = 0; i < 3; i++) {
@@ -49,70 +51,118 @@ async function runHybridPipeline(
     }
   }
 
-  // ── Phase 3 + 4 run in parallel ───────────────────────────────────────────
-  // LLM only needs raw text — no dependency on embeddings, so fire it concurrently
-  const llmPromise: Promise<any> =
-    baseSkillScore >= LLM_MIN_SCORE && jobWithEmb
-      ? vectorService.llmScore(
-          jobWithEmb.rawText || jobWithEmb.description,
-          resumeText
+  const jdStructured    = jobWithEmb?.jdStructured ?? null;
+  const missingRequired = existingBreakdown.missingRequired ?? [];
+
+  // ── Phase 3 + LangGraph pipeline run in parallel ─────────────────────────
+  // Phase 3 (section embeddings) is pure math — stays in TypeScript.
+  // LangGraph pipeline (Agents 2→3→4→5) is one HTTP call — handles all
+  // conditional routing, validation, and Python-computed scoring internally.
+  const [sectionEmbeddings, graphResult] = await Promise.all([
+
+    // Phase 3: section-level semantic embeddings (unchanged)
+    (async () => {
+      if (!jobWithEmb?.sectionEmbeddings) return null;
+      try {
+        const cached = await redisService.getCachedEmbeddings(resumeHash);
+        if (cached) return cached;
+        const emb = await vectorService.generateSectionEmbeddings(resumeText, 'passage');
+        await redisService.setCachedEmbeddings(resumeHash, emb);
+        return emb;
+      } catch (err: any) {
+        console.warn(`Worker Phase 3 embeddings failed: ${err.message}`);
+        return null;
+      }
+    })(),
+
+    // LangGraph pipeline: Agents 2→3→4→5 with conditional routing
+    // Python handles: grounding, Pydantic validation, Python math, validator node
+    (baseSkillScore >= LLM_MIN_SCORE
+      ? agentService.runGraphPipeline(
+          resumeText, jdStructured, baseSkillScore, null, missingRequired
         ).catch((err: any) => {
-          console.warn(`Worker Phase 4 LLM skipped for ${candidateId}: ${err.message}`);
+          console.warn(`Worker LangGraph pipeline failed: ${err.message}`);
           return null;
         })
-      : Promise.resolve(null);
+      : Promise.resolve(null)
+    ),
+  ]);
 
-  if (jobWithEmb?.sectionEmbeddings) {
-    try {
-      const cachedEmb = await redisService.getCachedEmbeddings(resumeHash);
-      if (cachedEmb) {
-        sectionEmbeddings = cachedEmb;
-      } else {
-        sectionEmbeddings = await vectorService.generateSectionEmbeddings(resumeText, 'passage');
-        await redisService.setCachedEmbeddings(resumeHash, sectionEmbeddings);
-      }
-      sectionSemanticScore = vectorService.scoreFromSectionEmbeddings(
-        jobWithEmb.sectionEmbeddings,
-        sectionEmbeddings
-      );
-    } catch (err: any) {
-      console.warn(`Worker Phase 3 failed for ${candidateId}: ${err.message}`);
-    }
+  // Phase 3 semantic score (independent of agent pipeline)
+  let sectionSemanticScore: number | null = null;
+  if (jobWithEmb?.sectionEmbeddings && sectionEmbeddings) {
+    sectionSemanticScore = vectorService.scoreFromSectionEmbeddings(
+      jobWithEmb.sectionEmbeddings,
+      sectionEmbeddings
+    );
   }
 
-  let llmScoreValue: number | null = null;
-  let llmFeedback: any = null;
+  // ── Score resolution ──────────────────────────────────────────────────────
+  let finalScore:    number;
+  let scoreBreakdown: any;
+  let llmFeedback:   any = null;
 
-  const llmResult = await llmPromise;
-  if (llmResult) {
-    llmScoreValue = llmResult.overallRecommendation;
-    llmFeedback = {
-      keyStrengths:          llmResult.keyStrengths,
-      keyGaps:               llmResult.keyGaps,
-      overallRecommendation: llmResult.overallRecommendation,
+  if (graphResult) {
+    // LangGraph path: Python-computed final_score is authoritative
+    finalScore    = Math.min(100, Math.max(0, graphResult.final_score));
+    scoreBreakdown = {
+      ...existingBreakdown,
+      sectionSemanticScore,
+      // llmScore = keyword/Phase1+2 baseline score (before agent analysis)
+      // finalScore = agent-computed final — difference shows agent value
+      llmScore:   baseSkillScore,
+      finalScore,
     };
+    llmFeedback = {
+      keyStrengths:          graphResult.top_strengths,
+      keyGaps:               graphResult.key_gaps,
+      overallRecommendation: finalScore,
+      verdict:               graphResult.verdict,
+      recruiterNote:         graphResult.recruiter_note,
+    };
+    const path = `LangGraph/${graphResult.processing_path}`;
+    const warns = graphResult.validation_warnings?.length
+      ? ` warns:${graphResult.validation_warnings.join(',')}` : '';
+    console.log(`Worker: [${path}] ${candidateId} → ${finalScore} (${graphResult.verdict})${warns}`);
+  } else {
+    // Fallback: keyword + semantic hybrid blend (no agents)
+    const blended = scoringService.calculateHybridScore(
+      baseSkillScore, sectionSemanticScore, null,
+      extractCandidateData({ rawText: resumeText }), jobWithEmb!, existingBreakdown
+    );
+    finalScore    = blended.finalScore;
+    scoreBreakdown = blended.scoreBreakdown;
+    console.log(`Worker: [hybrid-fallback] ${candidateId} → ${finalScore}`);
   }
 
-  const { finalScore, scoreBreakdown } = scoringService.calculateHybridScore(
-    baseSkillScore,
-    sectionSemanticScore,
-    llmScoreValue,
-    extractCandidateData({ rawText: resumeText }),
-    jobWithEmb!,
-    existingBreakdown
-  );
+  // ── Build agentAnalysis for storage ──────────────────────────────────────
+  const agentAnalysis = graphResult ? {
+    resumeStructured: graphResult.resume_structured ?? undefined,
+    skillValidation:  graphResult.skill_validation  ?? undefined,
+    experienceMatch:  graphResult.experience_match  ?? undefined,
+    synthesis: {
+      final_score:     finalScore,
+      verdict:         graphResult.verdict,
+      score_breakdown: graphResult.score_breakdown,
+      top_strengths:   graphResult.top_strengths,
+      key_gaps:        graphResult.key_gaps,
+      recruiter_note:  graphResult.recruiter_note,
+    },
+  } : undefined;
 
-  const existing = await Candidate.findById(candidateId);
+  // ── Build final score object ──────────────────────────────────────────────
+  const existing  = await Candidate.findById(candidateId);
   const prevScore = existing?.score ?? { overall: 0, skillMatch: 0, experienceMatch: 0, educationMatch: 0, keywordMatch: 0 };
 
   const finalScoreObj = {
     overall:         finalScore,
-    skillMatch:      existingBreakdown.skillMatchScore ?? prevScore.skillMatch,
-    experienceMatch: prevScore.experienceMatch,
+    skillMatch:      graphResult?.score_breakdown?.skills     ?? existingBreakdown.skillMatchScore ?? prevScore.skillMatch,
+    experienceMatch: graphResult?.experience_match?.experience_score ?? prevScore.experienceMatch,
     educationMatch:  prevScore.educationMatch,
     keywordMatch:    prevScore.keywordMatch,
   };
 
+  // ── Cache + persist ───────────────────────────────────────────────────────
   await redisService.setCachedScore(resumeHash, jobId, {
     score:         finalScoreObj,
     scoreBreakdown,
@@ -125,9 +175,8 @@ async function runHybridPipeline(
     scoreBreakdown,
     llmFeedback:       llmFeedback ?? undefined,
     score:             finalScoreObj,
+    agentAnalysis,
   });
-
-  console.log(`Worker: candidate ${candidateId} fully scored — ${finalScore}`);
 }
 
 // ── Main job processor ────────────────────────────────────────────────────────

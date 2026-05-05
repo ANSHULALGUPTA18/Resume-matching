@@ -72,12 +72,14 @@ export const initDB = async (): Promise<void> => {
   const alterStatements = [
     `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS section_embeddings JSONB DEFAULT NULL`,
     `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS jd_hash TEXT`,
+    `ALTER TABLE jobs ADD COLUMN IF NOT EXISTS jd_structured JSONB DEFAULT NULL`,
     `ALTER TABLE candidates ADD COLUMN IF NOT EXISTS extracted_data JSONB DEFAULT NULL`,
     `ALTER TABLE candidates ADD COLUMN IF NOT EXISTS section_embeddings JSONB DEFAULT NULL`,
     `ALTER TABLE candidates ADD COLUMN IF NOT EXISTS score_breakdown JSONB DEFAULT NULL`,
     `ALTER TABLE candidates ADD COLUMN IF NOT EXISTS llm_feedback JSONB DEFAULT NULL`,
     `ALTER TABLE candidates ADD COLUMN IF NOT EXISTS resume_hash TEXT`,
     `ALTER TABLE candidates ADD COLUMN IF NOT EXISTS batch_id UUID REFERENCES batches(id)`,
+    `ALTER TABLE candidates ADD COLUMN IF NOT EXISTS agent_analysis JSONB DEFAULT NULL`,
     // Prevent same resume being stored twice for the same job (dedup key)
     `DO $$ BEGIN
        IF NOT EXISTS (
